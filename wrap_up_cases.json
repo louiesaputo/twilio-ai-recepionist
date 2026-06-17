@@ -12,5 +12,7 @@
   { "name": "goodbye", "text": "goodbye", "expect_wrap_up": true },
   { "name": "nothing_else_thanks", "text": "nothing else thanks", "expect_wrap_up": true },
   { "name": "actually_one_more_thing", "text": "actually I need to change my address", "expect_wrap_up": false },
-  { "name": "gate_code_addition", "text": "yes can you add that the gate code is 1234", "expect_wrap_up": false }
+  { "name": "gate_code_addition", "text": "yes can you add that the gate code is 1234", "expect_wrap_up": false },
+  { "name": "yeah_lets_add_gate_code", "text": "yeah let's add that the gate code is 1234", "expect_wrap_up": false },
+  { "name": "might_as_well_add_dog_note", "text": "might as well add the dog will be in the yard", "expect_wrap_up": false }
 ]
