@@ -1679,6 +1679,8 @@ function isFinalQuestionWrapUpAnswer(text) {
   const it = stripLeadingBriefFillerForFinalWrapUp(normalizeIntentText(text || ""));
   if (!it) return false;
 
+  if (looksLikeFinalQuestionAddition(it)) return false;
+
   if (isAffirmative(it) || isNegative(it) || isEndCallPhrase(it)) return true;
 
   const tLo = normalizedText(it);
@@ -1747,6 +1749,30 @@ function isFinalQuestionWrapUpAnswer(text) {
   }
 
   return false;
+}
+
+function looksLikeFinalQuestionAddition(text) {
+  const it = normalizeIntentText(text || "");
+  if (!it) return false;
+  if (isEndCallPhrase(it)) return false;
+  if (
+    containsAny(it, [
+      "nothing to add",
+      "nothing more to add",
+      "no notes",
+      "no note",
+      "no special instructions",
+      "no instructions"
+    ]) ||
+    /\b(?:no|nope|nah|naw|nothing|dont|don t|do not|not)\b.{0,30}\b(?:add|include|note|mention)\b/.test(it)
+  ) {
+    return false;
+  }
+  return (
+    /\b(?:add|include|mention|note|tell|attach|capture|put|pass along)\b/.test(it) ||
+    /\b(?:let|make)\s+(?:them|the tech|the technician|the office|someone|somebody|whoever)\s+know\b/.test(it) ||
+    /\b(?:also|one more thing|another thing|forgot to say)\b/.test(it)
+  );
 }
 
 /** After caller adds another detail at final_question—short acknowledgement (then a fresh anything-else pitch). */
@@ -6195,6 +6221,14 @@ function queuePrimaryLeadAndBooking(caller, options = {}) {
   });
 }
 
+function acceptPendingCallbackSlot(caller) {
+  caller.appointmentDate = caller.pendingOfferedDate;
+  caller.appointmentTime = caller.pendingOfferedTime;
+  caller.status = "scheduled";
+  caller.calendarSlotConfirmed = true;
+  queuePrimaryLeadAndBooking(caller);
+}
+
 
 
 
@@ -8650,10 +8684,7 @@ async function handlePrompt(ws, caller, speech) {
           sendText(ws, buildLateDayFallbackPrompt(caller));
           return;
         }
-        caller.appointmentDate = caller.pendingOfferedDate;
-        caller.appointmentTime = caller.pendingOfferedTime;
-        caller.status = "scheduled";
-        caller.calendarSlotConfirmed = true;
+        acceptPendingCallbackSlot(caller);
         caller.lastStep = "ask_notes";
         sendText(ws, buildTechnicianNotesPrompt(caller));
         return;
@@ -8698,10 +8729,7 @@ async function handlePrompt(ws, caller, speech) {
               sendText(ws, buildLateDayFallbackPrompt(caller));
               return;
             }
-            caller.appointmentDate = caller.pendingOfferedDate;
-            caller.appointmentTime = caller.pendingOfferedTime;
-            caller.status = "scheduled";
-            caller.calendarSlotConfirmed = true;
+            acceptPendingCallbackSlot(caller);
             caller.lastStep = "ask_notes";
             sendText(ws, buildTechnicianNotesPrompt(caller));
             return;
@@ -8796,10 +8824,7 @@ async function handlePrompt(ws, caller, speech) {
 
 
       if (isAffirmative(text)) {
-        caller.appointmentDate = caller.pendingOfferedDate;
-        caller.appointmentTime = caller.pendingOfferedTime;
-        caller.status = "scheduled";
-        caller.calendarSlotConfirmed = true;
+        acceptPendingCallbackSlot(caller);
         caller.lastStep = "ask_notes";
         sendText(ws, buildTechnicianNotesPrompt(caller));
         return;
@@ -8844,7 +8869,7 @@ async function handlePrompt(ws, caller, speech) {
 
 
 
-      queuePrimaryLeadAndBooking(caller);
+      queuePrimaryLeadAndBooking(caller, { forceLead: hadNotes && caller.makeSent });
 
 
 
@@ -9525,6 +9550,66 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
 
   console.log(`\nPassed ${passed} of ${cases.length} wrap-up cases.`);
   process.exit(passed === cases.length ? 0 : 1);
+}
+
+if (process.env.BLUE_CALLER_TEST_SUBMISSION === "1") {
+  const assert = require("assert");
+
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  async function waitForPosts(posts, expected) {
+    for (let i = 0; i < 20; i++) {
+      if (posts.length >= expected) return;
+      await wait(10);
+    }
+  }
+
+  (async () => {
+    const posts = [];
+    postJsonToWebhook = async (_webhookUrl, payload, label) => {
+      posts.push({ label, payload });
+      return { statusCode: 200, body: "{}" };
+    };
+
+    const caller = getOrCreateCaller("submission-regression");
+    Object.assign(caller, {
+      fullName: "Test Caller",
+      firstName: "Test",
+      phone: "+15551234567",
+      callbackNumber: "+15551234567",
+      address: "123 Main Street, Springfield, NY 12345",
+      issue: "leaking pipe",
+      issueSummary: "leaking pipe",
+      pendingOfferedDate: "Thursday, April 9",
+      pendingOfferedTime: "2:30 PM"
+    });
+
+    acceptPendingCallbackSlot(caller);
+    await waitForPosts(posts, 2);
+
+    assert.strictEqual(caller.status, "scheduled");
+    assert.strictEqual(caller.calendarSlotConfirmed, true);
+    assert.strictEqual(caller.makeSent, true);
+    assert.strictEqual(caller.bookingSent, true);
+    assert.strictEqual(posts.filter((p) => p.label === "MAKE").length, 1);
+    assert.strictEqual(posts.filter((p) => p.label === "BOOKING").length, 1);
+
+    caller.notes = "Gate code is 1234.";
+    queuePrimaryLeadAndBooking(caller, { forceLead: true });
+    await waitForPosts(posts, 3);
+
+    const makePosts = posts.filter((p) => p.label === "MAKE");
+    const bookingPosts = posts.filter((p) => p.label === "BOOKING");
+    assert.strictEqual(makePosts.length, 2);
+    assert.strictEqual(bookingPosts.length, 1);
+    assert.strictEqual(makePosts[1].payload.notes, "Gate code is 1234.");
+
+    console.log("PASS  accepted callback submits immediately and note resubmits lead");
+    process.exit(0);
+  })().catch((err) => {
+    console.error("FAIL  submission regression");
+    console.error(err && err.stack ? err.stack : err);
+    process.exit(1);
+  });
 }
 
 server.listen(PORT, BIND_HOST, () => {
