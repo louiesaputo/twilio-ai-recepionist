@@ -1674,10 +1674,46 @@ function buildMissingNameAfterIssuePrompt(caller) {
 
 
 
+function stripFinalQuestionPolarityLeadIn(text) {
+  let s = stripLeadingBriefFillerForFinalWrapUp(normalizeIntentText(text || ""));
+  for (let guard = 0; guard < 6; guard++) {
+    const next = s
+      .replace(/^(?:no|nope|nah|naw|negative|yes|yeah|yep|yup|sure|ok|okay)\b\s*/i, "")
+      .replace(/^(?:wait|actually|sorry|but|and|also|please|hold on|one more thing)\b\s*/i, "")
+      .trim();
+    if (next === s) break;
+    s = next;
+  }
+  return s;
+}
+
+function looksLikeAdditionalFinalQuestionDetail(text) {
+  const it = stripLeadingBriefFillerForFinalWrapUp(normalizeIntentText(text || ""));
+  if (!it) return false;
+
+  const detailText = stripFinalQuestionPolarityLeadIn(it) || it;
+  if (!detailText) return false;
+
+  if (looksLikeSubstantiveTechNoteIntent(detailText)) return true;
+  if (looksLikeAddressCorrection(detailText)) return true;
+  if (isPostIntakeContactUpdateIntent(detailText)) return true;
+  if (isAlternateAvailabilityRequest(detailText) || isFirstAvailableRequest(detailText) || wantsOfficeCallback(detailText)) return true;
+
+  return containsAny(detailText, [
+    "add", "include", "note", "tell them", "let them know", "make sure",
+    "change", "update", "correct", "switch", "reschedule", "move it",
+    "another thing", "one more thing", "also", "actually", "wait",
+    "gate code", "door code", "lockbox", "call me", "text me",
+    "address", "phone", "callback", "appointment", "schedule"
+  ]);
+}
+
 /** True when caller is done with the anything-else pass (affirmative goodbye, no, nope, etc.). */
 function isFinalQuestionWrapUpAnswer(text) {
   const it = stripLeadingBriefFillerForFinalWrapUp(normalizeIntentText(text || ""));
   if (!it) return false;
+
+  if (looksLikeAdditionalFinalQuestionDetail(it)) return false;
 
   if (isAffirmative(it) || isNegative(it) || isEndCallPhrase(it)) return true;
 
