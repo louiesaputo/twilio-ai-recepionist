@@ -1693,6 +1693,13 @@ function looksLikeAdditionalFinalQuestionDetail(text) {
 
   const detailText = stripFinalQuestionPolarityLeadIn(it) || it;
   if (!detailText) return false;
+  if (
+    /^(?:notes?|nothing|nothing else|nothing more|thanks|thank you|that s it|thats it|that s all|thats all|all set|we re good|were good|i m good|im good)\b/.test(detailText) &&
+    !/\b(?:but|except|add|include|change|update|correct|gate|code|address|phone|callback|appointment|schedule)\b/.test(detailText) &&
+    !/\d/.test(detailText)
+  ) {
+    return false;
+  }
 
   if (looksLikeSubstantiveTechNoteIntent(detailText)) return true;
   if (looksLikeAddressCorrection(detailText)) return true;

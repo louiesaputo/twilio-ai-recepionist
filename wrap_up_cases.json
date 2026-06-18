@@ -8,6 +8,7 @@
   { "name": "uh_no_were_good", "text": "uh, no we're good", "expect_wrap_up": true },
   { "name": "all_set", "text": "we're all set", "expect_wrap_up": true },
   { "name": "nope_alone", "text": "nope", "expect_wrap_up": true },
+  { "name": "no_notes", "text": "no notes", "expect_wrap_up": true },
   { "name": "no_thanks_closing", "text": "no thanks that's all", "expect_wrap_up": true },
   { "name": "goodbye", "text": "goodbye", "expect_wrap_up": true },
   { "name": "nothing_else_thanks", "text": "nothing else thanks", "expect_wrap_up": true },
