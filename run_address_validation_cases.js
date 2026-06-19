@@ -9,6 +9,7 @@ const {
   analyzeUsServiceAddressCompleteness,
   mergeIncrementalServiceAddress,
   extractBestDispatchAddressCandidate,
+  mergeServiceAddressCorrection,
 } = require("./address_validation");
 
 const casesPath = path.join(__dirname, "address_validation_cases.json");
@@ -73,6 +74,31 @@ function runMergeCase(tc) {
   return { failures, merged, chk };
 }
 
+function runCorrectionCase(tc) {
+  const merged = mergeServiceAddressCorrection(tc.previous || "", tc.utterance || "");
+  const chk = analyzeUsServiceAddressCompleteness(merged);
+
+  let failures = checkExpect(chk, tc.expect || {});
+
+  if (tc.merged_must_include && Array.isArray(tc.merged_must_include)) {
+    const lower = merged.toLowerCase();
+    for (const frag of tc.merged_must_include) {
+      if (!lower.includes(String(frag).toLowerCase())) {
+        failures.push(`corrected string should include "${frag}" but merged=${JSON.stringify(merged)}`);
+      }
+    }
+  }
+
+  if (tc.merged_must_not_equal) {
+    const previous = String(tc.merged_must_not_equal).toLowerCase();
+    if (merged.toLowerCase() === previous) {
+      failures.push(`corrected string should not remain ${JSON.stringify(tc.merged_must_not_equal)}`);
+    }
+  }
+
+  return { failures, merged, chk };
+}
+
 function main() {
   let passed = 0;
   let total = 0;
@@ -89,7 +115,10 @@ function main() {
     total += 1;
     let failures;
 
-    if (tc.merge) {
+    if (tc.correction) {
+      const out = runCorrectionCase(tc);
+      failures = out.failures;
+    } else if (tc.merge) {
       const out = runMergeCase(tc);
       failures = out.failures;
     } else if (tc.extract) {

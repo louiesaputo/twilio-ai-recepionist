@@ -101,5 +101,31 @@
     "address": "Service address is 5,402 Messner Reeves, yes I live at 5402 Mesnar Reeves, Las Vegas, Nevada, 89152",
     "expect": { "ok": true },
     "merged_must_include": ["89152", "5402"]
+  },
+  {
+    "name": "correction_adds_apartment_to_complete_address",
+    "correction": true,
+    "previous": "123 Main Street, Springfield, OH 43201",
+    "utterance": "actually apartment 4",
+    "expect": { "ok": true },
+    "merged_must_include": ["Apt 4", "Springfield"],
+    "merged_must_not_equal": "123 Main Street, Springfield, OH 43201"
+  },
+  {
+    "name": "correction_replaces_street_number_on_complete_address",
+    "correction": true,
+    "previous": "123 Main Street, Springfield, OH 43201",
+    "utterance": "actually the street number is 125",
+    "expect": { "ok": true },
+    "merged_must_include": ["125 Main Street", "43201"],
+    "merged_must_not_equal": "123 Main Street, Springfield, OH 43201"
+  },
+  {
+    "name": "ambiguous_correction_does_not_keep_stale_complete_address",
+    "correction": true,
+    "previous": "123 Main Street, Springfield, OH 43201",
+    "utterance": "actually that's wrong",
+    "expect": { "ok": false },
+    "merged_must_not_equal": "123 Main Street, Springfield, OH 43201"
   }
 ]
