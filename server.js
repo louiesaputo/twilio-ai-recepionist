@@ -1679,7 +1679,7 @@ function isFinalQuestionWrapUpAnswer(text) {
   const it = stripLeadingBriefFillerForFinalWrapUp(normalizeIntentText(text || ""));
   if (!it) return false;
 
-  if (isAffirmative(it) || isNegative(it) || isEndCallPhrase(it)) return true;
+  if (isNegative(it) || isEndCallPhrase(it)) return true;
 
   const tLo = normalizedText(it);
 
@@ -1747,6 +1747,17 @@ function isFinalQuestionWrapUpAnswer(text) {
   }
 
   return false;
+}
+
+function isFinalQuestionAddMoreAnswer(text) {
+  const it = stripLeadingBriefFillerForFinalWrapUp(normalizeIntentText(text || ""));
+  if (!it) return false;
+  if (isFinalQuestionWrapUpAnswer(it)) return false;
+  return new Set([
+    "yes", "yeah", "yep", "yup", "sure", "ok", "okay",
+    "yes please", "yeah please", "sure please",
+    "one more thing", "i have one more thing", "i do"
+  ]).has(it);
 }
 
 /** After caller adds another detail at final_question—short acknowledgement (then a fresh anything-else pitch). */
@@ -2072,6 +2083,133 @@ function mergeIncrementalServiceAddress(previousRaw, utteranceRaw) {
     if (chk.ok) return chk.working;
   }
   return extractBestDispatchAddressCandidate(normalizeAddressInput(`${a}, ${b}`));
+}
+
+function splitAddressForCorrection(address) {
+  const normalized = normalizeAddressInput(address || "");
+  const parts = normalized.split(",").map((p) => cleanForSpeech(p)).filter(Boolean);
+  if (parts.length >= 2) return parts;
+  return normalized ? [normalized] : [];
+}
+
+function joinAddressCorrectionParts(parts) {
+  return normalizeAddressInput((parts || []).map((p) => cleanForSpeech(p)).filter(Boolean).join(", "));
+}
+
+function stripAddressCorrectionLead(text) {
+  let s = cleanForSpeech(text || "");
+  for (let guard = 0; guard < 6; guard++) {
+    const next = s
+      .replace(/^(?:no\s+wait|wait|actually|sorry|no|nah|it'?s|it is|its|that'?s|that is|thats)\b[,\s-]*/i, "")
+      .replace(/^(?:the\s+)?(?:correct|right|updated|new)\s+(?:one\s+)?(?:is|should be|would be)\b[,\s-]*/i, "")
+      .replace(/^(?:should be|would be|is)\b[,\s-]*/i, "")
+      .trim();
+    if (next === s) break;
+    s = next;
+  }
+  return s;
+}
+
+function extractUnitCorrection(text) {
+  const s = stripAddressCorrectionLead(text);
+  const m = s.match(/\b(apt|apartment|unit|suite|ste|#)\s*(?:number|no\.?)?\s*([A-Za-z0-9][A-Za-z0-9-]*)\b/i);
+  if (!m) return "";
+  const label = /^apt|^apartment/i.test(m[1]) ? "Apt" : /^ste|^suite/i.test(m[1]) ? "Suite" : "Unit";
+  return `${label} ${m[2]}`;
+}
+
+function applyUnitCorrection(previousRaw, unit) {
+  if (!unit) return "";
+  const parts = splitAddressForCorrection(previousRaw);
+  if (!parts.length) return "";
+  parts[0] = cleanForSpeech(parts[0])
+    .replace(/\b(?:apt|apartment|unit|suite|ste)\.?\s*(?:number|no\.?)?\s*[A-Za-z0-9-]+\b/gi, "")
+    .replace(/\s+#\s*[A-Za-z0-9-]+\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  parts[0] = `${parts[0]} ${unit}`.trim();
+  return joinAddressCorrectionParts(parts);
+}
+
+function extractStreetNumberCorrection(text) {
+  const s = stripAddressCorrectionLead(text);
+  const explicit = s.match(/\b(?:street|house|building)?\s*number\s*(?:is|should be|would be|as)?\s*(\d{1,6}[A-Za-z-]?)\b/i);
+  if (explicit) return explicit[1];
+  const leading = s.match(/^(\d{1,6}[A-Za-z-]?)\b(?!\s*(?:am|pm)\b)/i);
+  return leading ? leading[1] : "";
+}
+
+function applyStreetNumberCorrection(previousRaw, streetNumber) {
+  if (!streetNumber) return "";
+  const parts = splitAddressForCorrection(previousRaw);
+  if (!parts.length || !/^\s*\d{1,6}[A-Za-z-]?\b/.test(parts[0])) return "";
+  parts[0] = cleanForSpeech(parts[0]).replace(/^\s*\d{1,6}[A-Za-z-]?\b/, streetNumber);
+  return joinAddressCorrectionParts(parts);
+}
+
+function extractStreetLineCorrection(text) {
+  const s = stripAddressCorrectionLead(text);
+  if (!dispatchLineHasStreetNumber(s)) return "";
+  if (!containsAny(normalizedText(s), [
+    "street", "st", "road", "rd", "avenue", "ave", "lane", "ln", "drive", "dr",
+    "boulevard", "blvd", "court", "ct", "circle", "cir", "way", "highway", "hwy",
+    "parkway", "pkwy", "route", "place", "pl"
+  ])) return "";
+  return normalizeAddressInput(s);
+}
+
+function applyStreetLineCorrection(previousRaw, streetLine) {
+  if (!streetLine) return "";
+  const parts = splitAddressForCorrection(previousRaw);
+  if (!parts.length) return "";
+  parts[0] = streetLine;
+  return joinAddressCorrectionParts(parts);
+}
+
+function extractZipCorrection(text) {
+  const s = stripAddressCorrectionLead(text);
+  const explicit = s.match(/\b(?:zip|zip code|postal code)\s*(?:is|should be|would be|as)?\s*(\d{5}(?:-\d{4})?)\b/i);
+  if (explicit) return explicit[1];
+  const onlyZip = s.match(/^\d{5}(?:-\d{4})?$/);
+  return onlyZip ? onlyZip[0] : "";
+}
+
+function applyZipCorrection(previousRaw, zip) {
+  if (!zip) return "";
+  const parts = splitAddressForCorrection(previousRaw);
+  if (!parts.length) return "";
+  const lastIx = parts.length - 1;
+  if (/\b\d{5}(?:-\d{4})?\b/.test(parts[lastIx])) {
+    parts[lastIx] = parts[lastIx].replace(/\b\d{5}(?:-\d{4})?\b/, zip);
+  } else {
+    parts[lastIx] = `${parts[lastIx]} ${zip}`.trim();
+  }
+  return joinAddressCorrectionParts(parts);
+}
+
+function mergeServiceAddressCorrection(previousRaw, correctionRaw) {
+  const previous = extractBestDispatchAddressCandidate(previousRaw || "");
+  const correction = extractBestDispatchAddressCandidate(correctionRaw || "");
+  if (!previous) return correction;
+  if (!correction) return previous;
+
+  const correctionAlone = analyzeUsServiceAddressCompleteness(correction);
+  if (correctionAlone.ok) return correctionAlone.working;
+
+  const targeted = [
+    applyUnitCorrection(previous, extractUnitCorrection(correctionRaw)),
+    applyStreetLineCorrection(previous, extractStreetLineCorrection(correctionRaw)),
+    applyStreetNumberCorrection(previous, extractStreetNumberCorrection(correctionRaw)),
+    applyZipCorrection(previous, extractZipCorrection(correctionRaw)),
+  ].filter(Boolean);
+
+  for (const candidate of targeted) {
+    if (normalizedText(candidate) !== normalizedText(previous)) return candidate;
+  }
+
+  const merged = mergeIncrementalServiceAddress(previous, correctionRaw);
+  if (normalizedText(merged) !== normalizedText(previous)) return merged;
+  return "";
 }
 
 
@@ -8295,9 +8433,14 @@ async function handlePrompt(ws, caller, speech) {
         return;
       }
       if (looksLikeAddressCorrection(text)) {
-        caller.address = extractBestDispatchAddressCandidate(
-          mergeIncrementalServiceAddress(caller.address || "", text)
-        );
+        const corrected = mergeServiceAddressCorrection(caller.address || "", text);
+        if (!corrected) {
+          caller.address = "";
+          caller.lastStep = "ask_address";
+          sendText(ws, caller.leadType === "quote" ? "No problem. What is the full corrected project address?" : "No problem. What is the full corrected service address?");
+          return;
+        }
+        caller.address = corrected;
         sendAddressReadBackOrIncomplete(ws, caller);
         return;
       }
@@ -8325,12 +8468,17 @@ async function handlePrompt(ws, caller, speech) {
             return;
           }
           if (addressDecision.intent === "correct_address" && addressDecision.corrected_address) {
-            caller.address = extractBestDispatchAddressCandidate(
-              mergeIncrementalServiceAddress(
-                caller.address || "",
-                normalizeAddressInput(addressDecision.corrected_address)
-              )
+            const corrected = mergeServiceAddressCorrection(
+              caller.address || "",
+              normalizeAddressInput(addressDecision.corrected_address)
             );
+            if (!corrected) {
+              caller.address = "";
+              caller.lastStep = "ask_address";
+              sendText(ws, caller.leadType === "quote" ? "No problem. What is the full corrected project address?" : "No problem. What is the full corrected service address?");
+              return;
+            }
+            caller.address = corrected;
             sendAddressReadBackOrIncomplete(ws, caller);
             return;
           }
@@ -9039,6 +9187,11 @@ async function handlePrompt(ws, caller, speech) {
       if (isFinalQuestionWrapUpAnswer(text)) {
         queuePrimaryLeadAndBooking(caller);
         closeSession(ws, buildFinalSubmissionClose(caller));
+        return;
+      }
+
+      if (isFinalQuestionAddMoreAnswer(text)) {
+        sendText(ws, "Sure—what else should I add?");
         return;
       }
 
