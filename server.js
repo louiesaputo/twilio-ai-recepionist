@@ -1674,75 +1674,37 @@ function buildMissingNameAfterIssuePrompt(caller) {
 
 
 
-/** True when caller is done with the anything-else pass (affirmative goodbye, no, nope, etc.). */
+/** True when caller is done with the anything-else pass (no, nope, that's all, etc.). */
 function isFinalQuestionWrapUpAnswer(text) {
   const it = stripLeadingBriefFillerForFinalWrapUp(normalizeIntentText(text || ""));
   if (!it) return false;
 
-  if (isAffirmative(it) || isNegative(it) || isEndCallPhrase(it)) return true;
-
   const tLo = normalizedText(it);
 
-  if (
-    containsAny(it, [
-      "i think that s it",
-      "i think thats it",
-      "that s all",
-      "thats all",
-      "that is all",
-      "nope that s it",
-      "nope thats it",
-      "nah that s it",
-      "nah thats it",
-      "no that s it",
-      "no thats it",
-      "no nothing",
-      "no nothing else",
-      "nothing else",
-      "nothing more",
-      "nothing to add",
-      "nothing more to add",
-      "that s everything",
-      "thats everything",
-      "that ll do it",
-      "thatll do it",
-      "that will do it",
-      "that ll do",
-      "thatll do",
-      "all set",
-      "we re all set",
-      "were all set",
-      "i m all set",
-      "im all set",
-      "we re good",
-      "were good",
-      "i m good",
-      "im good"
-    ]) ||
-    containsAny(tLo, [
-      "bye",
-      "goodbye",
-      "good bye",
-      "see ya",
-      "cya",
-      "catch you later",
-      "that's all",
-      "that's it",
-      "that'll do",
-      "that'll do it"
-    ])
-  ) {
+  const directClosings = new Set([
+    "no", "nope", "nah", "naw",
+    "no thanks", "no thank you", "thanks no",
+    "no nothing", "no nothing else",
+    "nothing", "nothing else", "nothing more", "nothing to add", "nothing more to add",
+    "that s it", "thats it", "that is it",
+    "that s all", "thats all", "that is all",
+    "that s everything", "thats everything", "that is everything",
+    "that ll do", "thatll do", "that will do",
+    "that ll do it", "thatll do it", "that will do it",
+    "all set", "we re all set", "were all set", "i m all set", "im all set",
+    "we re good", "were good", "i m good", "im good",
+    "bye", "goodbye", "good bye", "see ya", "cya", "catch you later"
+  ]);
+  if (directClosings.has(it) || directClosings.has(tLo)) {
     return true;
   }
 
   if (
-    /\b(no|nope|nah|naw)\s+(that s it|thats it|that s all|thats all|nothing else|nothing more)\b/.test(it) ||
-    /\b(that s it|thats it|that s all|thats all|nothing else|that ll do|thatll do|that will do)\s*(thanks|thank you|thx)\b/.test(it)
+    /^(no|nope|nah|naw)\s+(that s it|thats it|that s all|thats all|nothing else|nothing more|we re good|were good|we re all set|were all set|i m good|im good|all set)(?:\s+(thanks|thank you|thx))?$/.test(it) ||
+    /^no\s+(thanks|thank you|thx)\s+(that s it|thats it|that s all|thats all|nothing else|nothing more)$/.test(it) ||
+    /^(i think\s+)?(that s it|thats it|that s all|thats all|nothing else|nothing more|nothing to add|that ll do|thatll do|that will do)(?:\s+(thanks|thank you|thx))?$/.test(it) ||
+    /^(yes|yeah|yep|yup)\s+(that ll do it|thatll do it|that will do it|that s all|thats all|that s it|thats it|we re good|were good|i m good|im good|all set)$/.test(it)
   ) {
-    return true;
-  }
-
-  if (it.length <= 42 && /\b(that s it|thats it|that s all|thats all|nothing else|all set)\b$/i.test(it)) {
     return true;
   }
 
@@ -2047,6 +2009,87 @@ function analyzeUsServiceAddressCompleteness(raw) {
   return { ok, missing: ok ? [] : missing, working };
 }
 
+function extractSecondaryAddressCorrection(raw) {
+  const text = cleanForSpeech(raw || "");
+  const match = /\b(apt|apartment|suite|ste|unit|#)\s*([A-Za-z0-9-]+)\b/i.exec(text);
+  if (!match) return "";
+  const label = match[1] === "#" ? "unit" : match[1].toLowerCase();
+  return `${label} ${match[2]}`.trim();
+}
+
+function replaceOrInsertSecondaryAddress(address, secondary) {
+  if (!secondary) return "";
+  const working = normalizeAddressInput(address || "");
+  if (!working) return "";
+
+  const parts = working.split(",").map((p) => cleanForSpeech(p)).filter(Boolean);
+  const secondaryRe = /^(?:apt|apartment|suite|ste|unit|#)\b/i;
+  if (parts.length >= 3) {
+    if (secondaryRe.test(parts[1])) {
+      parts[1] = secondary;
+    } else {
+      parts.splice(1, 0, secondary);
+    }
+    return normalizeAddressInput(parts.join(", "));
+  }
+
+  return normalizeAddressInput(`${working}, ${secondary}`);
+}
+
+function replaceCityInAddress(address, city) {
+  const cleanCity = cleanForSpeech(city || "")
+    .replace(/\b(?:state|zip|zipcode|zip code|postal code)\b.*$/i, "")
+    .trim();
+  if (!cleanCity || /\d/.test(cleanCity)) return "";
+
+  const working = normalizeAddressInput(address || "");
+  const parts = working.split(",").map((p) => cleanForSpeech(p)).filter(Boolean);
+  const secondaryRe = /^(?:apt|apartment|suite|ste|unit|#)\b/i;
+
+  if (parts.length >= 3) {
+    const cityIndex = parts.length >= 4 && secondaryRe.test(parts[1]) ? 2 : 1;
+    parts[cityIndex] = cleanCity;
+    return normalizeAddressInput(parts.join(", "));
+  }
+
+  if (parts.length === 2) {
+    const tail = /^(.+?)\s+([A-Z]{2})\s+(\d{5}(?:-\d{4})?)\s*$/i.exec(parts[1]);
+    if (tail) {
+      parts[1] = `${cleanCity} ${tail[2].toUpperCase()} ${tail[3]}`;
+      return normalizeAddressInput(parts.join(", "));
+    }
+  }
+
+  return "";
+}
+
+function applyPartialAddressCorrection(previousRaw, utteranceRaw) {
+  const previous = normalizeAddressInput(previousRaw || "");
+  const utterance = normalizeAddressInput(utteranceRaw || "");
+  if (!previous || !utterance) return "";
+
+  const zipMatches = [...utterance.matchAll(/\b\d{5}(?:-\d{4})?\b/g)];
+  if (zipMatches.length) {
+    const zip = zipMatches[zipMatches.length - 1][0];
+    const replaced = previous.replace(/\b\d{5}(?:-\d{4})?\b(?!.*\b\d{5}(?:-\d{4})?\b)/, zip);
+    if (replaced !== previous) return normalizeAddressInput(replaced);
+  }
+
+  const secondary = extractSecondaryAddressCorrection(utterance);
+  if (secondary) {
+    const patched = replaceOrInsertSecondaryAddress(previous, secondary);
+    if (patched) return patched;
+  }
+
+  const cityMatch = /\b(?:city|town|municipality)\s+(?:is\s+|should be\s+|is actually\s+)?([A-Za-z][A-Za-z\s'.-]{1,40})\b/i.exec(utterance);
+  if (cityMatch) {
+    const patched = replaceCityInAddress(previous, cityMatch[1]);
+    if (patched) return patched;
+  }
+
+  return "";
+}
+
 function mergeIncrementalServiceAddress(previousRaw, utteranceRaw) {
   const a = extractBestDispatchAddressCandidate(previousRaw || "");
   const b = extractBestDispatchAddressCandidate(utteranceRaw || "");
@@ -2058,7 +2101,11 @@ function mergeIncrementalServiceAddress(previousRaw, utteranceRaw) {
   if (bAlone.ok) return bAlone.working;
 
   const aAlone = analyzeUsServiceAddressCompleteness(a);
-  if (aAlone.ok) return aAlone.working;
+  if (aAlone.ok) {
+    const corrected = applyPartialAddressCorrection(aAlone.working, utteranceRaw || b);
+    if (corrected && analyzeUsServiceAddressCompleteness(corrected).ok) return corrected;
+    return aAlone.working;
+  }
 
   const combos = [
     normalizeAddressInput(`${a}, ${b}`),
@@ -3668,12 +3715,13 @@ function isHumanAgentRequest(text) {
     "talk to a person", "talk to someone", "talk to a human", "talk to somebody",
     "speak with a person", "speak with someone", "speak with a human",
     "talk with a person", "talk with someone", "talk with a human",
-    "live agent", "live representative", "customer service rep", "customer service",
+    "live agent", "live representative", "customer service rep",
     "transfer me", "connect me to someone", "connect me to a person",
     "get me a person", "get me someone", "put me through to someone",
     "speak to a rep", "talk to a rep", "real agent", "real representative"
   ])) return true;
-  return /\b(can|could|may|want to|wanna|need to)\b.*\b(speak|talk)\b.*\b(person|someone|somebody|human|agent|representative|rep)\b/.test(t);
+  return /\b(can|could|may|want to|wanna|need to)\b.*\b(speak|talk)\b.*\b(person|someone|somebody|human|agent|representative|rep|customer service)\b/.test(t) ||
+    /\b(transfer|connect|put me through|get me)\b.*\b(customer service|support)\b/.test(t);
 }
 
 function isAiIdentityQuestion(text) {

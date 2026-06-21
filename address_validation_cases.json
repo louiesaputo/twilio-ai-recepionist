@@ -101,5 +101,22 @@
     "address": "Service address is 5,402 Messner Reeves, yes I live at 5402 Mesnar Reeves, Las Vegas, Nevada, 89152",
     "expect": { "ok": true },
     "merged_must_include": ["89152", "5402"]
+  },
+  {
+    "name": "merge_complete_address_then_corrected_zip",
+    "merge": true,
+    "previous": "248 Lake Street, Columbus, OH 43215",
+    "utterance": "actually the zip is 43216",
+    "expect": { "ok": true },
+    "merged_must_include": ["43216"],
+    "merged_must_not_include": ["43215"]
+  },
+  {
+    "name": "merge_complete_address_then_unit",
+    "merge": true,
+    "previous": "248 Lake Street, Columbus, OH 43215",
+    "utterance": "unit 5",
+    "expect": { "ok": true },
+    "merged_must_include": ["unit 5", "43215"]
   }
 ]
