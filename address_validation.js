@@ -201,6 +201,87 @@ function analyzeUsServiceAddressCompleteness(raw) {
   return { ok, missing: ok ? [] : missing, working };
 }
 
+function extractSecondaryAddressCorrection(raw) {
+  const text = cleanForSpeech(raw || "");
+  const match = /\b(apt|apartment|suite|ste|unit|#)\s*([A-Za-z0-9-]+)\b/i.exec(text);
+  if (!match) return "";
+  const label = match[1] === "#" ? "unit" : match[1].toLowerCase();
+  return `${label} ${match[2]}`.trim();
+}
+
+function replaceOrInsertSecondaryAddress(address, secondary) {
+  if (!secondary) return "";
+  const working = normalizeAddressInput(address || "");
+  if (!working) return "";
+
+  const parts = working.split(",").map((p) => cleanForSpeech(p)).filter(Boolean);
+  const secondaryRe = /^(?:apt|apartment|suite|ste|unit|#)\b/i;
+  if (parts.length >= 3) {
+    if (secondaryRe.test(parts[1])) {
+      parts[1] = secondary;
+    } else {
+      parts.splice(1, 0, secondary);
+    }
+    return normalizeAddressInput(parts.join(", "));
+  }
+
+  return normalizeAddressInput(`${working}, ${secondary}`);
+}
+
+function replaceCityInAddress(address, city) {
+  const cleanCity = cleanForSpeech(city || "")
+    .replace(/\b(?:state|zip|zipcode|zip code|postal code)\b.*$/i, "")
+    .trim();
+  if (!cleanCity || /\d/.test(cleanCity)) return "";
+
+  const working = normalizeAddressInput(address || "");
+  const parts = working.split(",").map((p) => cleanForSpeech(p)).filter(Boolean);
+  const secondaryRe = /^(?:apt|apartment|suite|ste|unit|#)\b/i;
+
+  if (parts.length >= 3) {
+    const cityIndex = parts.length >= 4 && secondaryRe.test(parts[1]) ? 2 : 1;
+    parts[cityIndex] = cleanCity;
+    return normalizeAddressInput(parts.join(", "));
+  }
+
+  if (parts.length === 2) {
+    const tail = /^(.+?)\s+([A-Z]{2})\s+(\d{5}(?:-\d{4})?)\s*$/i.exec(parts[1]);
+    if (tail) {
+      parts[1] = `${cleanCity} ${tail[2].toUpperCase()} ${tail[3]}`;
+      return normalizeAddressInput(parts.join(", "));
+    }
+  }
+
+  return "";
+}
+
+function applyPartialAddressCorrection(previousRaw, utteranceRaw) {
+  const previous = normalizeAddressInput(previousRaw || "");
+  const utterance = normalizeAddressInput(utteranceRaw || "");
+  if (!previous || !utterance) return "";
+
+  const zipMatches = [...utterance.matchAll(/\b\d{5}(?:-\d{4})?\b/g)];
+  if (zipMatches.length) {
+    const zip = zipMatches[zipMatches.length - 1][0];
+    const replaced = previous.replace(/\b\d{5}(?:-\d{4})?\b(?!.*\b\d{5}(?:-\d{4})?\b)/, zip);
+    if (replaced !== previous) return normalizeAddressInput(replaced);
+  }
+
+  const secondary = extractSecondaryAddressCorrection(utterance);
+  if (secondary) {
+    const patched = replaceOrInsertSecondaryAddress(previous, secondary);
+    if (patched) return patched;
+  }
+
+  const cityMatch = /\b(?:city|town|municipality)\s+(?:is\s+|should be\s+|is actually\s+)?([A-Za-z][A-Za-z\s'.-]{1,40})\b/i.exec(utterance);
+  if (cityMatch) {
+    const patched = replaceCityInAddress(previous, cityMatch[1]);
+    if (patched) return patched;
+  }
+
+  return "";
+}
+
 function mergeIncrementalServiceAddress(previousRaw, utteranceRaw) {
   const a = extractBestDispatchAddressCandidate(previousRaw || "");
   const b = extractBestDispatchAddressCandidate(utteranceRaw || "");
@@ -212,7 +293,11 @@ function mergeIncrementalServiceAddress(previousRaw, utteranceRaw) {
   if (bAlone.ok) return bAlone.working;
 
   const aAlone = analyzeUsServiceAddressCompleteness(a);
-  if (aAlone.ok) return aAlone.working;
+  if (aAlone.ok) {
+    const corrected = applyPartialAddressCorrection(aAlone.working, utteranceRaw || b);
+    if (corrected && analyzeUsServiceAddressCompleteness(corrected).ok) return corrected;
+    return aAlone.working;
+  }
 
   const combos = [
     normalizeAddressInput(`${a}, ${b}`),
