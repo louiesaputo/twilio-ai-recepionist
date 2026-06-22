@@ -12,5 +12,8 @@
   { "name": "goodbye", "text": "goodbye", "expect_wrap_up": true },
   { "name": "nothing_else_thanks", "text": "nothing else thanks", "expect_wrap_up": true },
   { "name": "actually_one_more_thing", "text": "actually I need to change my address", "expect_wrap_up": false },
-  { "name": "gate_code_addition", "text": "yes can you add that the gate code is 1234", "expect_wrap_up": false }
+  { "name": "gate_code_addition", "text": "yes can you add that the gate code is 1234", "expect_wrap_up": false },
+  { "name": "bare_yes_means_more_to_add", "text": "yes", "expect_wrap_up": false },
+  { "name": "bare_yeah_means_more_to_add", "text": "yeah", "expect_wrap_up": false },
+  { "name": "bare_okay_means_more_to_add", "text": "okay", "expect_wrap_up": false }
 ]

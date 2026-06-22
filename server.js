@@ -1674,12 +1674,16 @@ function buildMissingNameAfterIssuePrompt(caller) {
 
 
 
-/** True when caller is done with the anything-else pass (affirmative goodbye, no, nope, etc.). */
+/** True when caller is done with the anything-else pass (no, nope, explicit close, etc.). */
 function isFinalQuestionWrapUpAnswer(text) {
   const it = stripLeadingBriefFillerForFinalWrapUp(normalizeIntentText(text || ""));
   if (!it) return false;
 
-  if (isAffirmative(it) || isNegative(it) || isEndCallPhrase(it)) return true;
+  const bareAffirmatives = new Set([
+    "yes", "yeah", "yea", "yep", "yup", "sure", "ok", "okay", "absolutely", "definitely"
+  ]);
+  if (bareAffirmatives.has(it)) return false;
+  if (isNegative(it) || isEndCallPhrase(it) || isAffirmative(it)) return true;
 
   const tLo = normalizedText(it);
 
@@ -4941,9 +4945,8 @@ function wantsOfficeCallback(text) {
 
 
 function looksLikeAddressCorrection(text) {
-  const t = normalizedText(text);
+  const t = normalizeIntentText(text);
   if (!t) return false;
-  if (isAffirmative(t) || isNegative(t)) return false;
 
 
 
@@ -4961,9 +4964,19 @@ function looksLikeAddressCorrection(text) {
 
 
   if (confirmationish) return false;
+  if ((isAffirmative(t) || isNegative(t)) && !hasAddressSignals && !startsLikeCorrection) return false;
   if (hasAddressSignals) return true;
-  if (startsLikeCorrection && t.split(/\s+/).filter(Boolean).length >= 2) return true;
+  if (startsLikeCorrection && !isNegative(t) && t.split(/\s+/).filter(Boolean).length >= 2) return true;
   return false;
+}
+
+function applyAddressCorrectionFromConfirmation(ws, caller, text) {
+  if (!looksLikeAddressCorrection(text)) return false;
+  caller.address = extractBestDispatchAddressCandidate(
+    mergeIncrementalServiceAddress(caller.address || "", text)
+  );
+  sendAddressReadBackOrIncomplete(ws, caller);
+  return true;
 }
 
 
@@ -8288,17 +8301,11 @@ async function handlePrompt(ws, caller, speech) {
         await finalizeAddressConfirmationAndAdvance(ws, caller);
         return;
       }
+      if (applyAddressCorrectionFromConfirmation(ws, caller, text)) return;
       if (isNegative(text)) {
         caller.address = "";
         caller.lastStep = "ask_address";
         sendText(ws, caller.leadType === "quote" ? "I'm sorry about that. Let's try it again. What is the project address?" : "I'm sorry about that. Let's try it again. What is the service address?");
-        return;
-      }
-      if (looksLikeAddressCorrection(text)) {
-        caller.address = extractBestDispatchAddressCandidate(
-          mergeIncrementalServiceAddress(caller.address || "", text)
-        );
-        sendAddressReadBackOrIncomplete(ws, caller);
         return;
       }
 
@@ -9499,6 +9506,84 @@ wss.on("connection", (ws, request) => {
 
 
 
+
+if (process.env.BLUE_CALLER_TEST_ADDRESS_CORRECTION === "1") {
+  const casesPath = path.join(__dirname, "address_correction_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load address_correction_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  let passed = 0;
+  let total = 0;
+  for (const tc of cases) {
+    total += 1;
+    const sessionKey = `address-correction-${total}`;
+    const sent = [];
+    const ws = {
+      readyState: 1,
+      sessionKey,
+      send(payload) {
+        sent.push(payload);
+      }
+    };
+    const caller = getOrCreateCaller(sessionKey);
+    caller.lastStep = "confirm_address";
+    caller.leadType = tc.lead_type || "service";
+    caller.address = tc.previous_address || "";
+
+    const gotApplied = applyAddressCorrectionFromConfirmation(ws, caller, tc.text || "");
+    const expectedApplied = Boolean(tc.expect_applied);
+    const failures = [];
+
+    if (gotApplied !== expectedApplied) {
+      failures.push(`expected applied=${expectedApplied} but got ${gotApplied}`);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(tc, "expect_negative")) {
+      const gotNegative = isNegative(tc.text || "");
+      if (gotNegative !== Boolean(tc.expect_negative)) {
+        failures.push(`expected negative=${Boolean(tc.expect_negative)} but got ${gotNegative}`);
+      }
+    }
+
+    if (gotApplied && Array.isArray(tc.address_must_include)) {
+      const lowerAddress = String(caller.address || "").toLowerCase();
+      for (const frag of tc.address_must_include) {
+        if (!lowerAddress.includes(String(frag).toLowerCase())) {
+          failures.push(`corrected address should include "${frag}" but got ${JSON.stringify(caller.address)}`);
+        }
+      }
+    }
+
+    if (gotApplied && Array.isArray(tc.address_must_not_include)) {
+      const lowerAddress = String(caller.address || "").toLowerCase();
+      for (const frag of tc.address_must_not_include) {
+        if (lowerAddress.includes(String(frag).toLowerCase())) {
+          failures.push(`corrected address should not include "${frag}" but got ${JSON.stringify(caller.address)}`);
+        }
+      }
+    }
+
+    if (gotApplied && tc.expect_last_step && caller.lastStep !== tc.expect_last_step) {
+      failures.push(`expected lastStep=${tc.expect_last_step} but got ${caller.lastStep}`);
+    }
+
+    if (failures.length === 0) {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    } else {
+      console.log(`FAIL  ${tc.name}`);
+      for (const f of failures) console.log(`  - ${f}`);
+    }
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} address correction cases.`);
+  process.exit(passed === cases.length ? 0 : 1);
+}
 
 if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   const casesPath = path.join(__dirname, "wrap_up_cases.json");
