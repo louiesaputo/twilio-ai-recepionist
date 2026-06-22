@@ -1,0 +1,26 @@
+[
+  {
+    "name": "negative_replacement_address_applies",
+    "previous_address": "456 Oak Street, Toledo OH 43604",
+    "text": "No wait, it's 123 Pine Street, Columbus OH 43215",
+    "expect_applied": true,
+    "expect_negative": true,
+    "expect_last_step": "confirm_address",
+    "address_must_include": ["123 Pine Street", "Columbus", "43215"],
+    "address_must_not_include": ["456 Oak"]
+  },
+  {
+    "name": "plain_negative_rejection_not_correction",
+    "previous_address": "456 Oak Street, Toledo OH 43604",
+    "text": "no that's wrong",
+    "expect_applied": false,
+    "expect_negative": true
+  },
+  {
+    "name": "bare_no_not_correction",
+    "previous_address": "456 Oak Street, Toledo OH 43604",
+    "text": "no",
+    "expect_applied": false,
+    "expect_negative": true
+  }
+]
