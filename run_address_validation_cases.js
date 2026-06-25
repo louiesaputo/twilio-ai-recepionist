@@ -52,6 +52,15 @@ function runExtractCase(tc) {
     }
   }
 
+  if (tc.merged_must_not_include && Array.isArray(tc.merged_must_not_include)) {
+    const lower = extracted.toLowerCase();
+    for (const frag of tc.merged_must_not_include) {
+      if (lower.includes(String(frag).toLowerCase())) {
+        failures.push(`extracted string should not include "${frag}" but extracted=${JSON.stringify(extracted)}`);
+      }
+    }
+  }
+
   return { failures, extracted, chk };
 }
 
@@ -66,6 +75,15 @@ function runMergeCase(tc) {
     for (const frag of tc.merged_must_include) {
       if (!lower.includes(String(frag).toLowerCase())) {
         failures.push(`merged string should include "${frag}" but merged=${JSON.stringify(merged)}`);
+      }
+    }
+  }
+
+  if (tc.merged_must_not_include && Array.isArray(tc.merged_must_not_include)) {
+    const lower = merged.toLowerCase();
+    for (const frag of tc.merged_must_not_include) {
+      if (lower.includes(String(frag).toLowerCase())) {
+        failures.push(`merged string should not include "${frag}" but merged=${JSON.stringify(merged)}`);
       }
     }
   }

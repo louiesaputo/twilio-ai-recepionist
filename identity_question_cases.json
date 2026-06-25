@@ -1,0 +1,22 @@
+[
+  {
+    "name": "human_question_with_issue",
+    "text": "Am I talking to a real person? My water heater is leaking.",
+    "expect_substantive_text": "My water heater is leaking."
+  },
+  {
+    "name": "bot_question_with_address",
+    "text": "Are you a bot? 123 Main St, Columbus OH 43215",
+    "expect_substantive_text": "123 Main St, Columbus OH 43215"
+  },
+  {
+    "name": "human_request_only",
+    "text": "Can I speak to a person?",
+    "expect_substantive_text": ""
+  },
+  {
+    "name": "customer_service_with_issue",
+    "text": "Customer service, my sink is leaking.",
+    "expect_substantive_text": "my sink is leaking."
+  }
+]
