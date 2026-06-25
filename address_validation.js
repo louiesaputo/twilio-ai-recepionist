@@ -52,9 +52,11 @@ function stripDispatchConversationalLead(text) {
     const next = s
       .replace(/^(?:yes|yeah|yep|yup|sure|okay|ok|no|nope|nah)\b[,\s-]*/i, "")
       .replace(/^(?:and|so|well|uh|um|umm|like|right|alright)\b[,\s-]*/i, "")
+      .replace(/^(?:actually|sorry|apologies|my mistake)\b[,\s-]*/i, "")
       .replace(/^(?:i live at|i'?m at|im at|we'?re at|were at|i am at|we are at)\b[,\s]*/i, "")
       .replace(/^(?:my (?:service )?address is|(?:the )?(?:service )?address is|(?:the )?address is|address is)\b[,\s]*/i, "")
       .replace(/^(?:it'?s|it is|its|located at|living at|live at)\b[,\s]*/i, "")
+      .replace(/^(?:i meant|i mean|it should be|it is actually|it's actually|the correct address is|correct address is|change it to|make it|use)\b[,\s]*/i, "")
       .replace(/^(?:for reference|what i'?ve noted|what i have noted|service address is|noted)\b[,\s:-]*/i, "")
       .trim();
     if (next === s) break;
@@ -201,6 +203,32 @@ function analyzeUsServiceAddressCompleteness(raw) {
   return { ok, missing: ok ? [] : missing, working };
 }
 
+function addressTailAfterStreetLine(raw) {
+  const working = normalizeAddressInput(raw || "");
+  const commaParts = working.split(",").map((p) => cleanForSpeech(p)).filter(Boolean);
+  if (commaParts.length >= 2) return commaParts.slice(1).join(", ");
+
+  const oneLine =
+    /^(.+?\d.+?)\s+([a-z\s'.-]+(?:\s+[a-z\s'.-]+){0,3})\s+([A-Z]{2})\s+(\d{5}(?:-\d{4})?)\s*$/i.exec(working);
+  if (oneLine) return `${cleanForSpeech(oneLine[2])} ${oneLine[3].toUpperCase()} ${oneLine[4]}`;
+
+  return "";
+}
+
+function mergeStreetCorrectionWithExistingAddressTail(previousComplete, correctionRaw, correctionCheck) {
+  const correction = normalizeAddressInput(correctionRaw || "");
+  const missing = new Set((correctionCheck && correctionCheck.missing) || []);
+  if (!correction || !dispatchLineHasStreetNumber(correction)) return "";
+  if (!(missing.has("city") && missing.has("state") && missing.has("zip"))) return "";
+
+  const tail = addressTailAfterStreetLine(previousComplete);
+  if (!tail) return "";
+
+  const merged = normalizeAddressInput(`${correction}, ${tail}`);
+  const chk = analyzeUsServiceAddressCompleteness(merged);
+  return chk.ok ? chk.working : "";
+}
+
 function mergeIncrementalServiceAddress(previousRaw, utteranceRaw) {
   const a = extractBestDispatchAddressCandidate(previousRaw || "");
   const b = extractBestDispatchAddressCandidate(utteranceRaw || "");
@@ -212,7 +240,10 @@ function mergeIncrementalServiceAddress(previousRaw, utteranceRaw) {
   if (bAlone.ok) return bAlone.working;
 
   const aAlone = analyzeUsServiceAddressCompleteness(a);
-  if (aAlone.ok) return aAlone.working;
+  if (aAlone.ok) {
+    const correctedStreet = mergeStreetCorrectionWithExistingAddressTail(aAlone.working, b, bAlone);
+    return correctedStreet || aAlone.working;
+  }
 
   const combos = [
     normalizeAddressInput(`${a}, ${b}`),

@@ -101,5 +101,23 @@
     "address": "Service address is 5,402 Messner Reeves, yes I live at 5402 Mesnar Reeves, Las Vegas, Nevada, 89152",
     "expect": { "ok": true },
     "merged_must_include": ["89152", "5402"]
+  },
+  {
+    "name": "merge_complete_address_then_street_correction",
+    "merge": true,
+    "previous": "123 Main Street, Columbus, OH 43215",
+    "utterance": "Actually it's 456 Oak Street",
+    "expect": { "ok": true },
+    "merged_must_include": ["456 Oak Street", "Columbus", "43215"],
+    "merged_must_not_include": ["123 Main"]
+  },
+  {
+    "name": "merge_complete_one_line_address_then_street_correction",
+    "merge": true,
+    "previous": "123 Main Street Springfield OH 43201",
+    "utterance": "No, it should be 456 Oak Street",
+    "expect": { "ok": true },
+    "merged_must_include": ["456 Oak Street", "Springfield", "43201"],
+    "merged_must_not_include": ["123 Main"]
   }
 ]

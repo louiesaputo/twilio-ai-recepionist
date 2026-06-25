@@ -1674,12 +1674,12 @@ function buildMissingNameAfterIssuePrompt(caller) {
 
 
 
-/** True when caller is done with the anything-else pass (affirmative goodbye, no, nope, etc.). */
+/** True when caller is done with the anything-else pass (no, nope, goodbye, nothing else, etc.). */
 function isFinalQuestionWrapUpAnswer(text) {
   const it = stripLeadingBriefFillerForFinalWrapUp(normalizeIntentText(text || ""));
   if (!it) return false;
 
-  if (isAffirmative(it) || isNegative(it) || isEndCallPhrase(it)) return true;
+  if (isNegative(it) || isEndCallPhrase(it)) return true;
 
   const tLo = normalizedText(it);
 
@@ -1893,9 +1893,11 @@ function stripDispatchConversationalLead(text) {
     const next = s
       .replace(/^(?:yes|yeah|yep|yup|sure|okay|ok|no|nope|nah)\b[,\s-]*/i, "")
       .replace(/^(?:and|so|well|uh|um|umm|like|right|alright)\b[,\s-]*/i, "")
+      .replace(/^(?:actually|sorry|apologies|my mistake)\b[,\s-]*/i, "")
       .replace(/^(?:i live at|i'?m at|im at|we'?re at|were at|i am at|we are at)\b[,\s]*/i, "")
       .replace(/^(?:my (?:service )?address is|(?:the )?(?:service )?address is|(?:the )?address is|address is)\b[,\s]*/i, "")
       .replace(/^(?:it'?s|it is|its|located at|living at|live at)\b[,\s]*/i, "")
+      .replace(/^(?:i meant|i mean|it should be|it is actually|it's actually|the correct address is|correct address is|change it to|make it|use)\b[,\s]*/i, "")
       .replace(/^(?:for reference|what i'?ve noted|what i have noted|service address is|noted)\b[,\s:-]*/i, "")
       .trim();
     if (next === s) break;
@@ -2047,6 +2049,32 @@ function analyzeUsServiceAddressCompleteness(raw) {
   return { ok, missing: ok ? [] : missing, working };
 }
 
+function addressTailAfterStreetLine(raw) {
+  const working = normalizeAddressInput(raw || "");
+  const commaParts = working.split(",").map((p) => cleanForSpeech(p)).filter(Boolean);
+  if (commaParts.length >= 2) return commaParts.slice(1).join(", ");
+
+  const oneLine =
+    /^(.+?\d.+?)\s+([a-z\s'.-]+(?:\s+[a-z\s'.-]+){0,3})\s+([A-Z]{2})\s+(\d{5}(?:-\d{4})?)\s*$/i.exec(working);
+  if (oneLine) return `${cleanForSpeech(oneLine[2])} ${oneLine[3].toUpperCase()} ${oneLine[4]}`;
+
+  return "";
+}
+
+function mergeStreetCorrectionWithExistingAddressTail(previousComplete, correctionRaw, correctionCheck) {
+  const correction = normalizeAddressInput(correctionRaw || "");
+  const missing = new Set((correctionCheck && correctionCheck.missing) || []);
+  if (!correction || !dispatchLineHasStreetNumber(correction)) return "";
+  if (!(missing.has("city") && missing.has("state") && missing.has("zip"))) return "";
+
+  const tail = addressTailAfterStreetLine(previousComplete);
+  if (!tail) return "";
+
+  const merged = normalizeAddressInput(`${correction}, ${tail}`);
+  const chk = analyzeUsServiceAddressCompleteness(merged);
+  return chk.ok ? chk.working : "";
+}
+
 function mergeIncrementalServiceAddress(previousRaw, utteranceRaw) {
   const a = extractBestDispatchAddressCandidate(previousRaw || "");
   const b = extractBestDispatchAddressCandidate(utteranceRaw || "");
@@ -2058,7 +2086,10 @@ function mergeIncrementalServiceAddress(previousRaw, utteranceRaw) {
   if (bAlone.ok) return bAlone.working;
 
   const aAlone = analyzeUsServiceAddressCompleteness(a);
-  if (aAlone.ok) return aAlone.working;
+  if (aAlone.ok) {
+    const correctedStreet = mergeStreetCorrectionWithExistingAddressTail(aAlone.working, b, bAlone);
+    return correctedStreet || aAlone.working;
+  }
 
   const combos = [
     normalizeAddressInput(`${a}, ${b}`),
@@ -3704,6 +3735,40 @@ function buildAutomatedServiceAcknowledgement(caller, text) {
     "That's right—this is an AI demo line. I can keep going whenever you're ready.",
   ];
   return pools[nextPromptIndex(caller, "aiIdentityAckIx") % pools.length];
+}
+
+function cleanSubstantiveTextAfterAutomatedServiceQuestion(tail) {
+  const cleaned = cleanSpeechText(tail || "")
+    .replace(/^[\s?.!,;:\-]+/, "")
+    .replace(/^(?:and|but|so|because|about|for)\b[\s,;:\-]*/i, "")
+    .trim();
+
+  if (!/[A-Za-z0-9]/.test(cleaned)) return "";
+  if (/^(please|thanks|thank you|okay|ok|yes|yeah|yep|sure)$/i.test(cleaned)) return "";
+  return cleaned;
+}
+
+function extractSubstantiveTextAfterAutomatedServiceQuestion(text) {
+  const raw = cleanSpeechText(text || "");
+  if (!raw) return "";
+
+  const leadingQuestionPatterns = [
+    /^(?:am\s+i|are\s+we)\s+(?:talking|speaking)\s+to\s+(?:a\s+)?(?:real\s+person|live\s+person|actual\s+person|human(?:\s+being)?|ai|a\s*i|bot|robot|computer|automated(?:\s+system)?|virtual\s+assistant)\b([\s\S]*)$/i,
+    /^are\s+you\s+(?:a\s+)?(?:real\s+person|live\s+person|actual\s+person|human(?:\s+being)?|ai|a\s*i|bot|robot|computer|automated|virtual\s+assistant)\b([\s\S]*)$/i,
+    /^is\s+this\s+(?:a\s+)?(?:real\s+person|live\s+person|actual\s+person|human(?:\s+being)?|ai|a\s*i|bot|robot|computer|automated(?:\s+system)?|virtual\s+assistant|customer\s+service)\b([\s\S]*)$/i,
+    /^(?:can|could|may)\s+i\s+(?:speak|talk)\s+(?:to|with)\s+(?:a\s+)?(?:person|someone|somebody|human|agent|representative|rep|customer\s+service)\b([\s\S]*)$/i,
+    /^(?:i\s+want\s+to|i\s+wanna|i\s+need\s+to)\s+(?:speak|talk)\s+(?:to|with)\s+(?:a\s+)?(?:person|someone|somebody|human|agent|representative|rep|customer\s+service)\b([\s\S]*)$/i,
+    /^(?:customer\s+service|live\s+agent|real\s+agent|real\s+representative|live\s+representative)\b([\s\S]*)$/i,
+  ];
+
+  for (const pattern of leadingQuestionPatterns) {
+    const match = pattern.exec(raw);
+    if (!match) continue;
+    const cleaned = cleanSubstantiveTextAfterAutomatedServiceQuestion(match[1] || "");
+    if (cleaned) return cleaned;
+  }
+
+  return "";
 }
 
 
@@ -7057,7 +7122,7 @@ function applyFlexibleContactHarvest(ws, caller, text) {
 }
 
 async function handlePrompt(ws, caller, speech) {
-  const text = cleanSpeechText(speech || "");
+  let text = cleanSpeechText(speech || "");
   console.log("[PROMPT RECEIVED]", JSON.stringify({ step: caller.lastStep, text }));
   if (!text) {
     sendText(ws, "I'm sorry, I didn't catch that. Could you say that again?");
@@ -7085,9 +7150,15 @@ async function handlePrompt(ws, caller, speech) {
 
   if (isHumanAgentRequest(text) || isAiIdentityQuestion(text)) {
     const ack = buildAutomatedServiceAcknowledgement(caller, text);
-    const resume = buildResumePromptForCurrentStep(caller);
-    sendText(ws, resume ? `${ack} ${resume}` : ack);
-    return;
+    const substantiveText = extractSubstantiveTextAfterAutomatedServiceQuestion(text);
+    if (substantiveText) {
+      sendText(ws, ack);
+      text = substantiveText;
+    } else {
+      const resume = buildResumePromptForCurrentStep(caller);
+      sendText(ws, resume ? `${ack} ${resume}` : ack);
+      return;
+    }
   }
 
 
@@ -9036,6 +9107,11 @@ async function handlePrompt(ws, caller, speech) {
 
 
 
+      if (isAffirmative(text)) {
+        sendText(ws, "Sure—what else would you like me to add?");
+        return;
+      }
+
       if (isFinalQuestionWrapUpAnswer(text)) {
         queuePrimaryLeadAndBooking(caller);
         closeSession(ws, buildFinalSubmissionClose(caller));
@@ -9499,6 +9575,33 @@ wss.on("connection", (ws, request) => {
 
 
 
+
+if (process.env.BLUE_CALLER_TEST_IDENTITY_QUESTIONS === "1") {
+  const casesPath = path.join(__dirname, "identity_question_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load identity_question_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  let passed = 0;
+  for (const tc of cases) {
+    const got = extractSubstantiveTextAfterAutomatedServiceQuestion(tc.text);
+    const expect = String(tc.expect_substantive_text || "");
+    if (got === expect) {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    } else {
+      console.log(`FAIL  ${tc.name}`);
+      console.log(`  - expected substantive_text=${JSON.stringify(expect)} but got ${JSON.stringify(got)} for text: ${JSON.stringify(tc.text)}`);
+    }
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} identity question cases.`);
+  process.exit(passed === cases.length ? 0 : 1);
+}
 
 if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   const casesPath = path.join(__dirname, "wrap_up_cases.json");
