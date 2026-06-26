@@ -12,5 +12,12 @@
   { "name": "goodbye", "text": "goodbye", "expect_wrap_up": true },
   { "name": "nothing_else_thanks", "text": "nothing else thanks", "expect_wrap_up": true },
   { "name": "actually_one_more_thing", "text": "actually I need to change my address", "expect_wrap_up": false },
-  { "name": "gate_code_addition", "text": "yes can you add that the gate code is 1234", "expect_wrap_up": false }
+  { "name": "gate_code_addition", "text": "yes can you add that the gate code is 1234", "expect_wrap_up": false },
+  { "name": "bare_yes_needs_followup", "text": "yes", "expect_wrap_up": false },
+  { "name": "yes_please_with_detail", "text": "yes please the gate code is 1234", "expect_wrap_up": false },
+  { "name": "that_works_still_closes", "text": "that works", "expect_wrap_up": true },
+  { "name": "customer_service_note_not_human_request", "text": "customer service told me to mention the gate code is 1234", "expect_wrap_up": false, "expect_human_agent_request": false },
+  { "name": "customer_service_transfer_request", "text": "can I speak to customer service", "expect_human_agent_request": true },
+  { "name": "automated_system_note_not_identity_question", "text": "the automated system gave me reference 1234", "expect_wrap_up": false, "expect_ai_identity_question": false },
+  { "name": "automated_system_question", "text": "is this an automated system", "expect_ai_identity_question": true }
 ]
