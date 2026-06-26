@@ -1675,11 +1675,47 @@ function buildMissingNameAfterIssuePrompt(caller) {
 
 
 /** True when caller is done with the anything-else pass (affirmative goodbye, no, nope, etc.). */
+function finalQuestionAffirmativeRemainder(text) {
+  const it = stripLeadingBriefFillerForFinalWrapUp(normalizeIntentText(text || ""));
+  if (!it) return null;
+  const match = it.match(/^(yes|yeah|yea|yep|yup|sure|for sure|ok|okay|absolutely|definitely)(?:\s+please)?(?:\s+|$)(.*)$/);
+  return match ? (match[2] || "").trim() : null;
+}
+
+function isBareFinalQuestionAffirmative(text) {
+  const remainder = finalQuestionAffirmativeRemainder(text);
+  if (remainder === null) return false;
+  return !remainder || /^(please|thanks|thank you|thank you very much|thanks very much)$/.test(remainder);
+}
+
+function hasFinalQuestionAdditionalDetail(text) {
+  const it = stripLeadingBriefFillerForFinalWrapUp(normalizeIntentText(text || ""));
+  if (!it || isEndCallPhrase(it)) return false;
+
+  const affirmativeRemainder = finalQuestionAffirmativeRemainder(it);
+  let detail = affirmativeRemainder === null ? it : affirmativeRemainder;
+  detail = detail
+    .replace(/^(actually|also|and|just)\s+/, "")
+    .replace(/^(can you|could you|please|make sure|note that|tell them|let them know)\s+/, "")
+    .trim();
+
+  if (!detail || /^(please|thanks|thank you|thank you very much|thanks very much)$/.test(detail)) return false;
+  if (isEndCallPhrase(detail)) return false;
+
+  return /\d|@/.test(detail) || looksLikeSubstantiveTechNoteIntent(detail) || containsAny(detail, [
+    "add", "include", "mention", "note", "tell", "let them know",
+    "customer service", "automated system", "reference", "claim", "ticket",
+    "address", "phone", "email", "contact"
+  ]);
+}
+
 function isFinalQuestionWrapUpAnswer(text) {
   const it = stripLeadingBriefFillerForFinalWrapUp(normalizeIntentText(text || ""));
   if (!it) return false;
 
-  if (isAffirmative(it) || isNegative(it) || isEndCallPhrase(it)) return true;
+  if (isBareFinalQuestionAffirmative(it) || hasFinalQuestionAdditionalDetail(it)) return false;
+  if (isNegative(it) || isEndCallPhrase(it)) return true;
+  if (isAffirmative(it)) return true;
 
   const tLo = normalizedText(it);
 
@@ -3668,11 +3704,14 @@ function isHumanAgentRequest(text) {
     "talk to a person", "talk to someone", "talk to a human", "talk to somebody",
     "speak with a person", "speak with someone", "speak with a human",
     "talk with a person", "talk with someone", "talk with a human",
-    "live agent", "live representative", "customer service rep", "customer service",
+    "live agent", "live representative", "customer service rep",
     "transfer me", "connect me to someone", "connect me to a person",
     "get me a person", "get me someone", "put me through to someone",
     "speak to a rep", "talk to a rep", "real agent", "real representative"
   ])) return true;
+  if (/\b(customer service|support)\b/.test(t)) {
+    return /\b(speak|talk|transfer|connect|reach|get|call)\b.*\b(customer service|support|agent|representative|rep|person|someone|somebody)\b/.test(t);
+  }
   return /\b(can|could|may|want to|wanna|need to)\b.*\b(speak|talk)\b.*\b(person|someone|somebody|human|agent|representative|rep)\b/.test(t);
 }
 
@@ -3686,9 +3725,9 @@ function isAiIdentityQuestion(text) {
     "is this a bot", "are you a bot", "talking to a bot",
     "talking to ai", "talking to a computer", "speaking to ai",
     "am i talking to ai", "am i speaking to ai",
-    "is this a computer", "virtual assistant", "automated system"
+    "is this a computer", "virtual assistant"
   ])) return true;
-  return /\b(is this|are you|am i talking to|am i speaking to)\b.*\b(ai|bot|robot|computer|automated|virtual)\b/.test(t);
+  return /\b(is this|are you|am i talking to|am i speaking to)\b.*\b(ai|bot|robot|computer|automated|automated system|virtual)\b/.test(t);
 }
 
 function buildAutomatedServiceAcknowledgement(caller, text) {
@@ -9036,6 +9075,11 @@ async function handlePrompt(ws, caller, speech) {
 
 
 
+      if (isBareFinalQuestionAffirmative(text)) {
+        sendText(ws, "Sure—what else should I add?");
+        return;
+      }
+
       if (isFinalQuestionWrapUpAnswer(text)) {
         queuePrimaryLeadAndBooking(caller);
         closeSession(ws, buildFinalSubmissionClose(caller));
@@ -9511,20 +9555,32 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   }
 
   let passed = 0;
-  for (const tc of cases) {
-    const got = isFinalQuestionWrapUpAnswer(tc.text);
-    const expect = Boolean(tc.expect_wrap_up);
+  let assertions = 0;
+  const check = (tc, label, got, expect) => {
+    assertions += 1;
     if (got === expect) {
       passed += 1;
-      console.log(`PASS  ${tc.name}`);
+      console.log(`PASS  ${tc.name} ${label}`);
     } else {
-      console.log(`FAIL  ${tc.name}`);
-      console.log(`  - expected wrap_up=${expect} but got ${got} for text: ${JSON.stringify(tc.text)}`);
+      console.log(`FAIL  ${tc.name} ${label}`);
+      console.log(`  - expected ${label}=${expect} but got ${got} for text: ${JSON.stringify(tc.text)}`);
+    }
+  };
+
+  for (const tc of cases) {
+    if (Object.prototype.hasOwnProperty.call(tc, "expect_wrap_up")) {
+      check(tc, "wrap_up", isFinalQuestionWrapUpAnswer(tc.text), Boolean(tc.expect_wrap_up));
+    }
+    if (Object.prototype.hasOwnProperty.call(tc, "expect_human_agent_request")) {
+      check(tc, "human_agent_request", isHumanAgentRequest(tc.text), Boolean(tc.expect_human_agent_request));
+    }
+    if (Object.prototype.hasOwnProperty.call(tc, "expect_ai_identity_question")) {
+      check(tc, "ai_identity_question", isAiIdentityQuestion(tc.text), Boolean(tc.expect_ai_identity_question));
     }
   }
 
-  console.log(`\nPassed ${passed} of ${cases.length} wrap-up cases.`);
-  process.exit(passed === cases.length ? 0 : 1);
+  console.log(`\nPassed ${passed} of ${assertions} wrap-up assertions.`);
+  process.exit(passed === assertions ? 0 : 1);
 }
 
 server.listen(PORT, BIND_HOST, () => {
