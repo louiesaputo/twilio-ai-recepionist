@@ -12,5 +12,9 @@
   { "name": "goodbye", "text": "goodbye", "expect_wrap_up": true },
   { "name": "nothing_else_thanks", "text": "nothing else thanks", "expect_wrap_up": true },
   { "name": "actually_one_more_thing", "text": "actually I need to change my address", "expect_wrap_up": false },
-  { "name": "gate_code_addition", "text": "yes can you add that the gate code is 1234", "expect_wrap_up": false }
+  { "name": "gate_code_addition", "text": "yes can you add that the gate code is 1234", "expect_wrap_up": false },
+  { "name": "no_wait_gate_code", "text": "no wait, the gate code is 4321", "expect_wrap_up": false },
+  { "name": "bare_yes_needs_followup", "text": "yes", "expect_wrap_up": false },
+  { "name": "all_set_except_callback", "text": "we're all set except change my callback number", "expect_wrap_up": false },
+  { "name": "good_but_add_detail", "text": "I'm good, but the side door is unlocked", "expect_wrap_up": false }
 ]
