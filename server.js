@@ -413,6 +413,16 @@ function stripLeadingBriefFillerForFinalWrapUp(it) {
   return s;
 }
 
+function hasAdditionalDetailContinuationCue(it) {
+  const t = normalizeIntentText(it || "");
+  if (!t) return false;
+  return (
+    /\b(wait|hold on|actually|but|except|one more thing|another thing|also|forgot|correction)\b/.test(t) ||
+    /\b(add|include|change|update|correct|switch)\b/.test(t) ||
+    /\b(gate code|access code|address|phone|number|callback|contact|technician should|tech should|should know)\b/.test(t)
+  );
+}
+
 const SOCIAL_OPENER_PHRASES = [
   "how are you", "how are doing", "how re you", "how are ya",
   "how ya doing", "how ya doin", "how you doing", "how you doin",
@@ -1679,7 +1689,16 @@ function isFinalQuestionWrapUpAnswer(text) {
   const it = stripLeadingBriefFillerForFinalWrapUp(normalizeIntentText(text || ""));
   if (!it) return false;
 
-  if (isAffirmative(it) || isNegative(it) || isEndCallPhrase(it)) return true;
+  if (hasAdditionalDetailContinuationCue(it)) return false;
+
+  const directWrapUps = new Set([
+    "no", "nope", "nah", "naw", "negative",
+    "no thanks", "no thank you", "nah thanks", "nope thanks",
+    "nothing", "nothing else", "nothing more", "nothing to add",
+    "skip", "pass", "nada",
+    "bye", "goodbye", "good bye"
+  ]);
+  if (directWrapUps.has(it) || isEndCallPhrase(it)) return true;
 
   const tLo = normalizedText(it);
 
@@ -1904,6 +1923,24 @@ function stripDispatchConversationalLead(text) {
   return s;
 }
 
+function stripAddressCorrectionLead(text) {
+  let s = cleanForSpeech(text || "");
+  for (let guard = 0; guard < 8; guard++) {
+    const next = s
+      .replace(/^(?:yes|yeah|yep|yup|sure|okay|ok|no|nope|nah)\b[,\s-]*/i, "")
+      .replace(/^(?:wait|actually|sorry|hold on|correction)\b[,\s-]*/i, "")
+      .replace(/^(?:it'?s|it is|its|that should be|it should be|should be)\b[,\s]*/i, "")
+      .replace(/^(?:change|update|correct|switch)\s+(?:the\s+)?(?:service\s+)?address\s+(?:to|as)\b[,\s]*/i, "")
+      .replace(/^(?:change|update|correct|switch)\s+(?:it|that)\s+(?:to|as)\b[,\s]*/i, "")
+      .replace(/^(?:(?:the\s+)?(?:service\s+)?address\s+is|address\s+is)\b[,\s]*/i, "")
+      .replace(/^(?:the\s+)?(?:zip|zip code|postal code)\s+(?:is|should be|to)\b[,\s]*/i, "")
+      .trim();
+    if (next === s) break;
+    s = next;
+  }
+  return s;
+}
+
 function dispatchLineHasStreetNumber(safe) {
   const trimmed = String(safe || "").trim();
   if (!trimmed) return false;
@@ -2047,6 +2084,47 @@ function analyzeUsServiceAddressCompleteness(raw) {
   return { ok, missing: ok ? [] : missing, working };
 }
 
+function mergePartialCorrectionIntoCompleteAddress(previousRaw, correctionRaw) {
+  const previous = analyzeUsServiceAddressCompleteness(previousRaw || "");
+  if (!previous.ok) return "";
+
+  const correction = stripAddressCorrectionLead(normalizeAddressInput(correctionRaw || ""));
+  if (!correction) return "";
+
+  const correctionChk = analyzeUsServiceAddressCompleteness(correction);
+  if (correctionChk.ok) return correctionChk.working;
+
+  const previousParts = previous.working.split(",").map((p) => cleanForSpeech(p)).filter(Boolean);
+  const previousStreet = previousParts[0] || "";
+  const previousTail = previousParts.slice(1).join(", ");
+  const correctionHasStreet = dispatchLineHasStreetNumber(correction);
+  const correctionHasZip = /\b\d{5}(?:-\d{4})?\b/.test(correction);
+  const correctionHasCity = !correctionChk.missing.includes("city");
+  const correctionHasState = !correctionChk.missing.includes("state");
+
+  if (correctionHasStreet && previousTail) {
+    const streetCorrection = cleanForSpeech(correction.split(",")[0] || correction);
+    const candidate = normalizeAddressInput(`${streetCorrection}, ${previousTail}`);
+    const chk = analyzeUsServiceAddressCompleteness(candidate);
+    if (chk.ok) return chk.working;
+  }
+
+  if (correctionHasZip && !correctionHasStreet && !correctionHasCity && !correctionHasState) {
+    const zip = correction.match(/\b\d{5}(?:-\d{4})?\b/)[0];
+    const candidate = previous.working.replace(/\b\d{5}(?:-\d{4})?\b(?!.*\b\d{5}(?:-\d{4})?\b)/, zip);
+    const chk = analyzeUsServiceAddressCompleteness(candidate);
+    if (chk.ok) return chk.working;
+  }
+
+  if (!correctionHasStreet && previousStreet && (correctionHasCity || correctionHasState || correctionHasZip)) {
+    const candidate = normalizeAddressInput(`${previousStreet}, ${correction}`);
+    const chk = analyzeUsServiceAddressCompleteness(candidate);
+    if (chk.ok) return chk.working;
+  }
+
+  return "";
+}
+
 function mergeIncrementalServiceAddress(previousRaw, utteranceRaw) {
   const a = extractBestDispatchAddressCandidate(previousRaw || "");
   const b = extractBestDispatchAddressCandidate(utteranceRaw || "");
@@ -2058,7 +2136,9 @@ function mergeIncrementalServiceAddress(previousRaw, utteranceRaw) {
   if (bAlone.ok) return bAlone.working;
 
   const aAlone = analyzeUsServiceAddressCompleteness(a);
-  if (aAlone.ok) return aAlone.working;
+  if (aAlone.ok) {
+    return mergePartialCorrectionIntoCompleteAddress(aAlone.working, b) || aAlone.working;
+  }
 
   const combos = [
     normalizeAddressInput(`${a}, ${b}`),
@@ -3029,6 +3109,8 @@ function afterCallbackDetailsUpdated(ws, caller, { nameAlsoUpdated = false } = {
     ? "Got it. I've updated the callback number and contact name."
     : "Got it. I've updated the callback number.";
 
+  queueLeadResubmissionIfAlreadySubmitted(caller);
+
   if (resume && resume !== "ask_notes") {
     caller.lastStep = resume;
     if (resume === "confirm_demo_followup_info") {
@@ -3609,6 +3691,7 @@ function looksLikeSubstantiveTechNoteIntent(text) {
 function isDecliningTechnicianNotes(text) {
   const it = normalizeIntentText(text);
   if (!it) return false;
+  if (hasAdditionalDetailContinuationCue(it)) return false;
   if (isEndCallPhrase(text)) return true;
 
   const substantive = looksLikeSubstantiveTechNoteIntent(text);
@@ -3689,6 +3772,45 @@ function isAiIdentityQuestion(text) {
     "is this a computer", "virtual assistant", "automated system"
   ])) return true;
   return /\b(is this|are you|am i talking to|am i speaking to)\b.*\b(ai|bot|robot|computer|automated|virtual)\b/.test(t);
+}
+
+function stripAutomationMetaPhrases(text) {
+  let s = normalizeIntentText(text || "");
+  if (!s) return "";
+
+  const patterns = [
+    /\b(?:can|could|may|would)?\s*(?:i|we)?\s*(?:please\s+)?(?:speak|talk)\s+(?:to|with)\s+(?:a\s+)?(?:real\s+|live\s+|actual\s+)?(?:person|someone|somebody|human|agent|representative|rep)\b/g,
+    /\b(?:i|we)?\s*(?:want|wanna|need)\s+to\s+(?:speak|talk)\s+(?:to|with)\s+(?:a\s+)?(?:real\s+|live\s+|actual\s+)?(?:person|someone|somebody|human|agent|representative|rep)\b/g,
+    /\b(?:real person|live person|actual person|human being|live agent|live representative|customer service rep|customer service|real agent|real representative)\b/g,
+    /\b(?:transfer me|connect me to someone|connect me to a person|get me a person|get me someone|put me through to someone)\b/g,
+    /\b(?:speak to a rep|talk to a rep|speak to someone|talk to someone|speak to a human|talk to a human)\b/g,
+    /\b(?:are you|is this)\s+(?:an?\s+)?(?:ai|a i|bot|robot|computer|automated system|automated|virtual assistant)\b/g,
+    /\b(?:am i talking to|am i speaking to|talking to|speaking to)\s+(?:an?\s+)?(?:ai|a i|bot|robot|computer|automated system|automated|virtual assistant)\b/g,
+    /\b(?:artificial intelligence|talking to a bot|talking to ai|speaking to ai)\b/g
+  ];
+  for (const pattern of patterns) {
+    s = s.replace(pattern, " ");
+  }
+  return s.replace(/\s+/g, " ").trim();
+}
+
+function hasActionableIntakeContentOutsideAutomationMeta(text) {
+  const rest = stripAutomationMetaPhrases(text);
+  if (!rest) return false;
+  if (isLikelyPhoneNumberResponse(rest)) return true;
+  if (/\b\d{1,6}\s+[a-z]/i.test(rest) || /\b\d{5}(?:-\d{4})?\b/.test(rest)) return true;
+  if (looksLikeAddressCorrection(rest) || isPostIntakeContactUpdateIntent(rest)) return true;
+  if (looksLikeIssueText(rest) || looksLikeSubstantiveTechNoteIntent(rest)) return true;
+  return containsAny(rest, [
+    "broken", "not working", "stopped working", "need service", "need help",
+    "fix my", "fix the", "repair", "leaking", "clogged", "backed up",
+    "ac", "air conditioner", "furnace", "heater", "plumbing"
+  ]);
+}
+
+function shouldOnlyAcknowledgeAutomationMetaQuestion(text) {
+  if (!(isHumanAgentRequest(text) || isAiIdentityQuestion(text))) return false;
+  return !hasActionableIntakeContentOutsideAutomationMeta(text);
 }
 
 function buildAutomatedServiceAcknowledgement(caller, text) {
@@ -6195,6 +6317,13 @@ function queuePrimaryLeadAndBooking(caller, options = {}) {
   });
 }
 
+function queueLeadResubmissionIfAlreadySubmitted(caller) {
+  if (!caller || caller.makeSent !== true) return false;
+  caller.makeSent = false;
+  queuePrimaryLeadAndBooking(caller, { forceLead: true });
+  return true;
+}
+
 
 
 
@@ -7083,7 +7212,7 @@ async function handlePrompt(ws, caller, speech) {
     return;
   }
 
-  if (isHumanAgentRequest(text) || isAiIdentityQuestion(text)) {
+  if (shouldOnlyAcknowledgeAutomationMetaQuestion(text)) {
     const ack = buildAutomatedServiceAcknowledgement(caller, text);
     const resume = buildResumePromptForCurrentStep(caller);
     sendText(ws, resume ? `${ack} ${resume}` : ack);
@@ -9028,6 +9157,19 @@ async function handlePrompt(ws, caller, speech) {
         sendText(ws, `${pricingResponse()} ${buildFinalSubmissionPrompt(caller)}`);
         return;
       }
+      if (looksLikeAddressCorrection(text)) {
+        const previousAddress = caller.address || "";
+        const correctedAddress = extractBestDispatchAddressCandidate(
+          mergeIncrementalServiceAddress(previousAddress, text)
+        );
+        if (correctedAddress && normalizedText(correctedAddress) !== normalizedText(previousAddress)) {
+          caller.address = correctedAddress;
+          caller.makeSent = false;
+          queuePrimaryLeadAndBooking(caller, { forceLead: true });
+          sendText(ws, `Got it, I updated the service address to ${formatAddressForConfirmation(caller.address)}. ${buildFinalSubmissionPrompt(caller)}`);
+          return;
+        }
+      }
 
 
 
@@ -9499,6 +9641,75 @@ wss.on("connection", (ws, request) => {
 
 
 
+
+if (process.env.BLUE_CALLER_TEST_INTENTS === "1") {
+  const casesPath = path.join(__dirname, "intent_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load intent_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  let passed = 0;
+  for (const tc of cases) {
+    const got = shouldOnlyAcknowledgeAutomationMetaQuestion(tc.text);
+    const expect = Boolean(tc.expect_ack_only);
+    if (got === expect) {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    } else {
+      console.log(`FAIL  ${tc.name}`);
+      console.log(`  - expected ack_only=${expect} but got ${got} for text: ${JSON.stringify(tc.text)}`);
+    }
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} intent cases.`);
+  process.exit(passed === cases.length ? 0 : 1);
+}
+
+if (process.env.BLUE_CALLER_TEST_SUBMISSION_RESUBMIT === "1") {
+  const queued = [];
+  const originalQueuePrimaryLeadAndBooking = queuePrimaryLeadAndBooking;
+  queuePrimaryLeadAndBooking = (caller, options = {}) => {
+    queued.push({ caller, options });
+  };
+
+  const caller = {
+    makeSent: true,
+    resumeStepAfterPhoneUpdate: "final_question",
+    lastStep: "capture_updated_callback_number",
+    leadType: "service",
+    fullName: "Jane Doe",
+    firstName: "Jane",
+    callbackNumber: "5551234567",
+    issueSummary: "Leaking sink",
+  };
+
+  afterCallbackDetailsUpdated({ readyState: 0 }, caller);
+  queuePrimaryLeadAndBooking = originalQueuePrimaryLeadAndBooking;
+
+  const ok =
+    caller.makeSent === false &&
+    caller.lastStep === "final_question" &&
+    queued.length === 1 &&
+    queued[0].caller === caller &&
+    queued[0].options &&
+    queued[0].options.forceLead === true;
+
+  if (ok) {
+    console.log("PASS  post_submit_contact_update_resubmits");
+    process.exit(0);
+  }
+  console.log("FAIL  post_submit_contact_update_resubmits");
+  console.log("  - state:", JSON.stringify({
+    makeSent: caller.makeSent,
+    lastStep: caller.lastStep,
+    queued: queued.map((q) => q.options),
+  }));
+  process.exit(1);
+}
 
 if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   const casesPath = path.join(__dirname, "wrap_up_cases.json");

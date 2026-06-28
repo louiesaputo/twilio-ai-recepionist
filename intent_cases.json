@@ -1,0 +1,27 @@
+[
+  {
+    "name": "standalone_human_request_acknowledged",
+    "text": "can I speak to a human",
+    "expect_ack_only": true
+  },
+  {
+    "name": "standalone_ai_identity_acknowledged",
+    "text": "are you a bot",
+    "expect_ack_only": true
+  },
+  {
+    "name": "human_request_with_issue_falls_through",
+    "text": "I need customer service, my AC is broken",
+    "expect_ack_only": false
+  },
+  {
+    "name": "ai_question_with_address_falls_through",
+    "text": "Are you a bot? 123 Main St Columbus OH 43215",
+    "expect_ack_only": false
+  },
+  {
+    "name": "negated_transfer_with_contact_update_falls_through",
+    "text": "don't transfer me yet, change my callback number",
+    "expect_ack_only": false
+  }
+]

@@ -63,6 +63,24 @@ function stripDispatchConversationalLead(text) {
   return s;
 }
 
+function stripAddressCorrectionLead(text) {
+  let s = cleanForSpeech(text || "");
+  for (let guard = 0; guard < 8; guard++) {
+    const next = s
+      .replace(/^(?:yes|yeah|yep|yup|sure|okay|ok|no|nope|nah)\b[,\s-]*/i, "")
+      .replace(/^(?:wait|actually|sorry|hold on|correction)\b[,\s-]*/i, "")
+      .replace(/^(?:it'?s|it is|its|that should be|it should be|should be)\b[,\s]*/i, "")
+      .replace(/^(?:change|update|correct|switch)\s+(?:the\s+)?(?:service\s+)?address\s+(?:to|as)\b[,\s]*/i, "")
+      .replace(/^(?:change|update|correct|switch)\s+(?:it|that)\s+(?:to|as)\b[,\s]*/i, "")
+      .replace(/^(?:(?:the\s+)?(?:service\s+)?address\s+is|address\s+is)\b[,\s]*/i, "")
+      .replace(/^(?:the\s+)?(?:zip|zip code|postal code)\s+(?:is|should be|to)\b[,\s]*/i, "")
+      .trim();
+    if (next === s) break;
+    s = next;
+  }
+  return s;
+}
+
 function dispatchLineHasStreetNumber(safe) {
   const trimmed = String(safe || "").trim();
   if (!trimmed) return false;
@@ -201,6 +219,47 @@ function analyzeUsServiceAddressCompleteness(raw) {
   return { ok, missing: ok ? [] : missing, working };
 }
 
+function mergePartialCorrectionIntoCompleteAddress(previousRaw, correctionRaw) {
+  const previous = analyzeUsServiceAddressCompleteness(previousRaw || "");
+  if (!previous.ok) return "";
+
+  const correction = stripAddressCorrectionLead(normalizeAddressInput(correctionRaw || ""));
+  if (!correction) return "";
+
+  const correctionChk = analyzeUsServiceAddressCompleteness(correction);
+  if (correctionChk.ok) return correctionChk.working;
+
+  const previousParts = previous.working.split(",").map((p) => cleanForSpeech(p)).filter(Boolean);
+  const previousStreet = previousParts[0] || "";
+  const previousTail = previousParts.slice(1).join(", ");
+  const correctionHasStreet = dispatchLineHasStreetNumber(correction);
+  const correctionHasZip = /\b\d{5}(?:-\d{4})?\b/.test(correction);
+  const correctionHasCity = !correctionChk.missing.includes("city");
+  const correctionHasState = !correctionChk.missing.includes("state");
+
+  if (correctionHasStreet && previousTail) {
+    const streetCorrection = cleanForSpeech(correction.split(",")[0] || correction);
+    const candidate = normalizeAddressInput(`${streetCorrection}, ${previousTail}`);
+    const chk = analyzeUsServiceAddressCompleteness(candidate);
+    if (chk.ok) return chk.working;
+  }
+
+  if (correctionHasZip && !correctionHasStreet && !correctionHasCity && !correctionHasState) {
+    const zip = correction.match(/\b\d{5}(?:-\d{4})?\b/)[0];
+    const candidate = previous.working.replace(/\b\d{5}(?:-\d{4})?\b(?!.*\b\d{5}(?:-\d{4})?\b)/, zip);
+    const chk = analyzeUsServiceAddressCompleteness(candidate);
+    if (chk.ok) return chk.working;
+  }
+
+  if (!correctionHasStreet && previousStreet && (correctionHasCity || correctionHasState || correctionHasZip)) {
+    const candidate = normalizeAddressInput(`${previousStreet}, ${correction}`);
+    const chk = analyzeUsServiceAddressCompleteness(candidate);
+    if (chk.ok) return chk.working;
+  }
+
+  return "";
+}
+
 function mergeIncrementalServiceAddress(previousRaw, utteranceRaw) {
   const a = extractBestDispatchAddressCandidate(previousRaw || "");
   const b = extractBestDispatchAddressCandidate(utteranceRaw || "");
@@ -212,7 +271,9 @@ function mergeIncrementalServiceAddress(previousRaw, utteranceRaw) {
   if (bAlone.ok) return bAlone.working;
 
   const aAlone = analyzeUsServiceAddressCompleteness(a);
-  if (aAlone.ok) return aAlone.working;
+  if (aAlone.ok) {
+    return mergePartialCorrectionIntoCompleteAddress(aAlone.working, b) || aAlone.working;
+  }
 
   const combos = [
     normalizeAddressInput(`${a}, ${b}`),
