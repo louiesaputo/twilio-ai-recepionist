@@ -78,6 +78,22 @@
     "merged_must_include": ["48104", "Ann Arbor"]
   },
   {
+    "name": "merge_complete_address_then_partial_street_correction",
+    "merge": true,
+    "previous": "123 Main St, Columbus, OH 43215",
+    "utterance": "Actually it is 124 Main Street",
+    "expect": { "ok": true },
+    "merged_must_include": ["124 Main Street", "Columbus", "43215"]
+  },
+  {
+    "name": "merge_complete_single_line_then_partial_street_correction",
+    "merge": true,
+    "previous": "123 Main St Springfield OH 43201",
+    "utterance": "no actually it should be 124 Main Street",
+    "expect": { "ok": true },
+    "merged_must_include": ["124 Main Street", "Springfield", "43201"]
+  },
+  {
     "name": "analyze_thousands_comma_street_number",
     "address": "5,402 Messner Reeves, Las Vegas, Nevada, 89152",
     "expect": { "ok": true }
