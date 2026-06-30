@@ -1675,9 +1675,14 @@ function buildMissingNameAfterIssuePrompt(caller) {
 
 
 /** True when caller is done with the anything-else pass (affirmative goodbye, no, nope, etc.). */
+function hasAdditionalFinalDetailAfterClosureCue(it) {
+  return /\b(nothing else|nothing more|all set|we re good|were good|i m good|im good)\b.+\b(but|except|also|add|include|unit|gate|code|address|phone|number|note|tell|mention)\b/.test(it);
+}
+
 function isFinalQuestionWrapUpAnswer(text) {
   const it = stripLeadingBriefFillerForFinalWrapUp(normalizeIntentText(text || ""));
   if (!it) return false;
+  if (hasAdditionalFinalDetailAfterClosureCue(it)) return false;
 
   if (isAffirmative(it) || isNegative(it) || isEndCallPhrase(it)) return true;
 
