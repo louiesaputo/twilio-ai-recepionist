@@ -101,5 +101,32 @@
     "address": "Service address is 5,402 Messner Reeves, yes I live at 5402 Mesnar Reeves, Las Vegas, Nevada, 89152",
     "expect": { "ok": true },
     "merged_must_include": ["89152", "5402"]
+  },
+  {
+    "name": "merge_complete_previous_city_correction",
+    "merge": true,
+    "previous": "248 Lake Street, Springfield, OH 45502",
+    "utterance": "Actually the city is Columbus, not Springfield",
+    "expect": { "ok": true },
+    "merged_must_include": ["248 Lake Street", "Columbus", "OH", "45502"],
+    "merged_must_not_include": ["Springfield"]
+  },
+  {
+    "name": "merge_complete_previous_zip_correction",
+    "merge": true,
+    "previous": "248 Lake Street, Springfield, OH 45502",
+    "utterance": "the ZIP should be 43215",
+    "expect": { "ok": true },
+    "merged_must_include": ["248 Lake Street", "Springfield", "OH", "43215"],
+    "merged_must_not_include": ["45502"]
+  },
+  {
+    "name": "merge_complete_previous_street_correction",
+    "merge": true,
+    "previous": "999 Lake Street, Springfield, OH 45502",
+    "utterance": "Actually the street is 248 Lake Street",
+    "expect": { "ok": true },
+    "merged_must_include": ["248 Lake Street", "Springfield", "OH", "45502"],
+    "merged_must_not_include": ["999 Lake Street"]
   }
 ]

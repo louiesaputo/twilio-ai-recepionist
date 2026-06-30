@@ -201,6 +201,137 @@ function analyzeUsServiceAddressCompleteness(raw) {
   return { ok, missing: ok ? [] : missing, working };
 }
 
+function escapeRegex(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const US_STATE_TOKEN_PATTERN = `(?:${[
+  ...Array.from(US_STATE_ABBREV).filter((abbr) => !abbreviationIsStreetSuffix(abbr)),
+  ...US_STATE_FULL_SNIPPETS
+].sort((a, b) => b.length - a.length).map(escapeRegex).join("|")})`;
+
+function extractDispatchStateZipTail(tailRaw) {
+  const tail = cleanForSpeech(tailRaw || "").replace(/^[,\s]+|[,\s]+$/g, "");
+  if (!tail) return { city: "", state: "", zip: "" };
+
+  const zipMatch = tail.match(/\b\d{5}(?:-\d{4})?\b/);
+  const zip = zipMatch ? zipMatch[0] : "";
+  const beforeZip = zipMatch ? tail.slice(0, zipMatch.index).trim() : tail;
+  const stateRe = new RegExp(`(?:^|[\\s,])(${US_STATE_TOKEN_PATTERN})\\s*$`, "i");
+  const stateMatch = beforeZip.match(stateRe);
+  const state = stateMatch ? cleanForSpeech(stateMatch[1]) : "";
+  const city = stateMatch
+    ? cleanForSpeech(beforeZip.slice(0, stateMatch.index).replace(/[,\s]+$/g, ""))
+    : "";
+  return { city, state, zip };
+}
+
+function parseDispatchAddressComponents(raw) {
+  const safe = normalizeAddressInput(raw || "");
+  if (!safe) return null;
+  const parts = safe.split(",").map((p) => cleanForSpeech(p)).filter(Boolean);
+
+  if (parts.length >= 3) {
+    const tail = extractDispatchStateZipTail(parts.slice(2).join(" "));
+    return {
+      streetLine: parts[0],
+      city: cleanForSpeech(parts.slice(1, -1).join(", ")) || tail.city,
+      state: tail.state,
+      zip: tail.zip,
+    };
+  }
+
+  if (parts.length === 2) {
+    const tail = extractDispatchStateZipTail(parts[1]);
+    return {
+      streetLine: parts[0],
+      city: tail.city,
+      state: tail.state,
+      zip: tail.zip,
+    };
+  }
+
+  const oneLineRe = new RegExp(`^(.+?\\d.+?)\\s+([A-Za-z][A-Za-z\\s'.-]*?)\\s+(${US_STATE_TOKEN_PATTERN})\\s+(\\d{5}(?:-\\d{4})?)\\s*$`, "i");
+  const oneLine = oneLineRe.exec(safe);
+  if (oneLine) {
+    return {
+      streetLine: cleanForSpeech(oneLine[1]),
+      city: cleanForSpeech(oneLine[2]),
+      state: cleanForSpeech(oneLine[3]),
+      zip: cleanForSpeech(oneLine[4]),
+    };
+  }
+
+  return null;
+}
+
+function stripCorrectionComparisonTail(value) {
+  return cleanForSpeech(value || "")
+    .replace(/\s*,?\s*(?:not|instead of|rather than)\b.*$/i, "")
+    .replace(/[.,]+$/g, "")
+    .trim();
+}
+
+function extractCorrectionFieldValue(text, labels) {
+  const labelPattern = labels.map(escapeRegex).join("|");
+  const re = new RegExp(`\\b(?:${labelPattern})\\b\\s*(?:is|are|should be|should have been|needs to be|need to be|actually is|is actually|as)?\\s+(.+)$`, "i");
+  const match = cleanForSpeech(text || "").match(re);
+  return match ? stripCorrectionComparisonTail(match[1]) : "";
+}
+
+function extractAddressCorrectionParts(utteranceRaw) {
+  const raw = normalizeAddressInput(utteranceRaw || "")
+    .replace(/^(?:no wait|actually|wait|sorry|it s|its|it is|that s|thats|that is)\b[,\s-]*/i, "")
+    .trim();
+  const parts = { streetLine: "", city: "", state: "", zip: "" };
+  if (!raw) return parts;
+
+  const zipMatch = raw.match(/\b\d{5}(?:-\d{4})?\b/);
+  if (zipMatch) parts.zip = zipMatch[0];
+
+  const city = extractCorrectionFieldValue(raw, ["city"]);
+  if (city && !/\d/.test(city) && !(new RegExp(`^${US_STATE_TOKEN_PATTERN}$`, "i")).test(city)) {
+    parts.city = city;
+  }
+
+  const stateValue = extractCorrectionFieldValue(raw, ["state"]);
+  if (stateValue) {
+    const stateMatch = stateValue.match(new RegExp(`^(${US_STATE_TOKEN_PATTERN})\\b`, "i"));
+    if (stateMatch) parts.state = cleanForSpeech(stateMatch[1]);
+  }
+
+  const streetValue = extractCorrectionFieldValue(raw, ["street", "address"]);
+  if (streetValue && dispatchLineHasStreetNumber(streetValue)) {
+    parts.streetLine = streetValue;
+  } else if (dispatchLineHasStreetNumber(raw) && !analyzeUsServiceAddressCompleteness(raw).ok) {
+    parts.streetLine = stripCorrectionComparisonTail(raw);
+  }
+
+  return parts;
+}
+
+function formatDispatchAddressComponents(components) {
+  const stateZip = [components.state, components.zip].filter(Boolean).join(" ");
+  return normalizeAddressInput([components.streetLine, components.city, stateZip].filter(Boolean).join(", "));
+}
+
+function mergeCompleteAddressCorrection(previousRaw, utteranceRaw) {
+  const previous = parseDispatchAddressComponents(previousRaw);
+  if (!previous || !previous.streetLine || !previous.city || !previous.state || !previous.zip) return "";
+
+  const correction = extractAddressCorrectionParts(utteranceRaw);
+  if (!correction.streetLine && !correction.city && !correction.state && !correction.zip) return "";
+
+  const merged = formatDispatchAddressComponents({
+    streetLine: correction.streetLine || previous.streetLine,
+    city: correction.city || previous.city,
+    state: correction.state || previous.state,
+    zip: correction.zip || previous.zip,
+  });
+  const chk = analyzeUsServiceAddressCompleteness(merged);
+  return chk.ok ? chk.working : "";
+}
+
 function mergeIncrementalServiceAddress(previousRaw, utteranceRaw) {
   const a = extractBestDispatchAddressCandidate(previousRaw || "");
   const b = extractBestDispatchAddressCandidate(utteranceRaw || "");
@@ -212,7 +343,10 @@ function mergeIncrementalServiceAddress(previousRaw, utteranceRaw) {
   if (bAlone.ok) return bAlone.working;
 
   const aAlone = analyzeUsServiceAddressCompleteness(a);
-  if (aAlone.ok) return aAlone.working;
+  if (aAlone.ok) {
+    const corrected = mergeCompleteAddressCorrection(aAlone.working, utteranceRaw);
+    return corrected || aAlone.working;
+  }
 
   const combos = [
     normalizeAddressInput(`${a}, ${b}`),
