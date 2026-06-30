@@ -70,6 +70,15 @@ function runMergeCase(tc) {
     }
   }
 
+  if (tc.merged_must_not_include && Array.isArray(tc.merged_must_not_include)) {
+    const lower = merged.toLowerCase();
+    for (const frag of tc.merged_must_not_include) {
+      if (lower.includes(String(frag).toLowerCase())) {
+        failures.push(`merged string should not include "${frag}" but merged=${JSON.stringify(merged)}`);
+      }
+    }
+  }
+
   return { failures, merged, chk };
 }
 

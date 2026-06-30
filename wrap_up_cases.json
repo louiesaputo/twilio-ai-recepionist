@@ -12,5 +12,7 @@
   { "name": "goodbye", "text": "goodbye", "expect_wrap_up": true },
   { "name": "nothing_else_thanks", "text": "nothing else thanks", "expect_wrap_up": true },
   { "name": "actually_one_more_thing", "text": "actually I need to change my address", "expect_wrap_up": false },
-  { "name": "gate_code_addition", "text": "yes can you add that the gate code is 1234", "expect_wrap_up": false }
+  { "name": "gate_code_addition", "text": "yes can you add that the gate code is 1234", "expect_wrap_up": false },
+  { "name": "were_good_but_gate_code", "text": "we're good on timing, but can you add the gate code is 1234", "expect_wrap_up": false },
+  { "name": "nothing_else_but_unit", "text": "nothing else on the leak, but the unit number is 2B", "expect_wrap_up": false }
 ]

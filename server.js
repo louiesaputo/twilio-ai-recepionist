@@ -1675,50 +1675,59 @@ function buildMissingNameAfterIssuePrompt(caller) {
 
 
 /** True when caller is done with the anything-else pass (affirmative goodbye, no, nope, etc.). */
+function hasAdditionalFinalDetailAfterClosureCue(it) {
+  return /\b(nothing else|nothing more|all set|we re good|were good|i m good|im good)\b.+\b(but|except|also|add|include|unit|gate|code|address|phone|number|note|tell|mention)\b/.test(it);
+}
+
 function isFinalQuestionWrapUpAnswer(text) {
   const it = stripLeadingBriefFillerForFinalWrapUp(normalizeIntentText(text || ""));
   if (!it) return false;
+  if (hasAdditionalFinalDetailAfterClosureCue(it)) return false;
 
   if (isAffirmative(it) || isNegative(it) || isEndCallPhrase(it)) return true;
 
   const tLo = normalizedText(it);
 
+  const exactWrapUpPhrases = new Set([
+    "i think that s it",
+    "i think thats it",
+    "that s all",
+    "thats all",
+    "that is all",
+    "nope that s it",
+    "nope thats it",
+    "nah that s it",
+    "nah thats it",
+    "no that s it",
+    "no thats it",
+    "no nothing",
+    "no nothing else",
+    "nothing else",
+    "nothing more",
+    "nothing to add",
+    "nothing more to add",
+    "that s everything",
+    "thats everything",
+    "that ll do it",
+    "thatll do it",
+    "that will do it",
+    "that ll do",
+    "thatll do",
+    "all set",
+    "we re all set",
+    "were all set",
+    "i m all set",
+    "im all set",
+    "no we re good",
+    "no were good",
+    "we re good",
+    "were good",
+    "i m good",
+    "im good"
+  ]);
+
   if (
-    containsAny(it, [
-      "i think that s it",
-      "i think thats it",
-      "that s all",
-      "thats all",
-      "that is all",
-      "nope that s it",
-      "nope thats it",
-      "nah that s it",
-      "nah thats it",
-      "no that s it",
-      "no thats it",
-      "no nothing",
-      "no nothing else",
-      "nothing else",
-      "nothing more",
-      "nothing to add",
-      "nothing more to add",
-      "that s everything",
-      "thats everything",
-      "that ll do it",
-      "thatll do it",
-      "that will do it",
-      "that ll do",
-      "thatll do",
-      "all set",
-      "we re all set",
-      "were all set",
-      "i m all set",
-      "im all set",
-      "we re good",
-      "were good",
-      "i m good",
-      "im good"
-    ]) ||
+    exactWrapUpPhrases.has(it) ||
     containsAny(tLo, [
       "bye",
       "goodbye",
@@ -2047,6 +2056,137 @@ function analyzeUsServiceAddressCompleteness(raw) {
   return { ok, missing: ok ? [] : missing, working };
 }
 
+function escapeRegexForDispatch(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+const US_STATE_TOKEN_PATTERN_FOR_DISPATCH = `(?:${[
+  ...Array.from(US_STATE_ABBREV_FOR_DISPATCH).filter((abbr) => !abbreviationIsStreetSuffixForDispatch(abbr)),
+  ...US_STATE_FULL_SNIPPETS_FOR_DISPATCH
+].sort((a, b) => b.length - a.length).map(escapeRegexForDispatch).join("|")})`;
+
+function extractDispatchStateZipTail(tailRaw) {
+  const tail = cleanForSpeech(tailRaw || "").replace(/^[,\s]+|[,\s]+$/g, "");
+  if (!tail) return { city: "", state: "", zip: "" };
+
+  const zipMatch = tail.match(/\b\d{5}(?:-\d{4})?\b/);
+  const zip = zipMatch ? zipMatch[0] : "";
+  const beforeZip = zipMatch ? tail.slice(0, zipMatch.index).trim() : tail;
+  const stateRe = new RegExp(`(?:^|[\\s,])(${US_STATE_TOKEN_PATTERN_FOR_DISPATCH})\\s*$`, "i");
+  const stateMatch = beforeZip.match(stateRe);
+  const state = stateMatch ? cleanForSpeech(stateMatch[1]) : "";
+  const city = stateMatch
+    ? cleanForSpeech(beforeZip.slice(0, stateMatch.index).replace(/[,\s]+$/g, ""))
+    : "";
+  return { city, state, zip };
+}
+
+function parseDispatchAddressComponents(raw) {
+  const safe = normalizeAddressInput(raw || "");
+  if (!safe) return null;
+  const parts = safe.split(",").map((p) => cleanForSpeech(p)).filter(Boolean);
+
+  if (parts.length >= 3) {
+    const tail = extractDispatchStateZipTail(parts.slice(2).join(" "));
+    return {
+      streetLine: parts[0],
+      city: cleanForSpeech(parts.slice(1, -1).join(", ")) || tail.city,
+      state: tail.state,
+      zip: tail.zip,
+    };
+  }
+
+  if (parts.length === 2) {
+    const tail = extractDispatchStateZipTail(parts[1]);
+    return {
+      streetLine: parts[0],
+      city: tail.city,
+      state: tail.state,
+      zip: tail.zip,
+    };
+  }
+
+  const oneLineRe = new RegExp(`^(.+?\\d.+?)\\s+([A-Za-z][A-Za-z\\s'.-]*?)\\s+(${US_STATE_TOKEN_PATTERN_FOR_DISPATCH})\\s+(\\d{5}(?:-\\d{4})?)\\s*$`, "i");
+  const oneLine = oneLineRe.exec(safe);
+  if (oneLine) {
+    return {
+      streetLine: cleanForSpeech(oneLine[1]),
+      city: cleanForSpeech(oneLine[2]),
+      state: cleanForSpeech(oneLine[3]),
+      zip: cleanForSpeech(oneLine[4]),
+    };
+  }
+
+  return null;
+}
+
+function stripCorrectionComparisonTail(value) {
+  return cleanForSpeech(value || "")
+    .replace(/\s*,?\s*(?:not|instead of|rather than)\b.*$/i, "")
+    .replace(/[.,]+$/g, "")
+    .trim();
+}
+
+function extractCorrectionFieldValue(text, labels) {
+  const labelPattern = labels.map(escapeRegexForDispatch).join("|");
+  const re = new RegExp(`\\b(?:${labelPattern})\\b\\s*(?:is|are|should be|should have been|needs to be|need to be|actually is|is actually|as)?\\s+(.+)$`, "i");
+  const match = cleanForSpeech(text || "").match(re);
+  return match ? stripCorrectionComparisonTail(match[1]) : "";
+}
+
+function extractAddressCorrectionParts(utteranceRaw) {
+  const raw = normalizeAddressInput(utteranceRaw || "")
+    .replace(/^(?:no wait|actually|wait|sorry|it s|its|it is|that s|thats|that is)\b[,\s-]*/i, "")
+    .trim();
+  const parts = { streetLine: "", city: "", state: "", zip: "" };
+  if (!raw) return parts;
+
+  const zipMatch = raw.match(/\b\d{5}(?:-\d{4})?\b/);
+  if (zipMatch) parts.zip = zipMatch[0];
+
+  const city = extractCorrectionFieldValue(raw, ["city"]);
+  if (city && !/\d/.test(city) && !(new RegExp(`^${US_STATE_TOKEN_PATTERN_FOR_DISPATCH}$`, "i")).test(city)) {
+    parts.city = city;
+  }
+
+  const stateValue = extractCorrectionFieldValue(raw, ["state"]);
+  if (stateValue) {
+    const stateMatch = stateValue.match(new RegExp(`^(${US_STATE_TOKEN_PATTERN_FOR_DISPATCH})\\b`, "i"));
+    if (stateMatch) parts.state = cleanForSpeech(stateMatch[1]);
+  }
+
+  const streetValue = extractCorrectionFieldValue(raw, ["street", "address"]);
+  if (streetValue && dispatchLineHasStreetNumberForDispatch(streetValue)) {
+    parts.streetLine = streetValue;
+  } else if (dispatchLineHasStreetNumberForDispatch(raw) && !analyzeUsServiceAddressCompleteness(raw).ok) {
+    parts.streetLine = stripCorrectionComparisonTail(raw);
+  }
+
+  return parts;
+}
+
+function formatDispatchAddressComponents(components) {
+  const stateZip = [components.state, components.zip].filter(Boolean).join(" ");
+  return normalizeAddressInput([components.streetLine, components.city, stateZip].filter(Boolean).join(", "));
+}
+
+function mergeCompleteAddressCorrection(previousRaw, utteranceRaw) {
+  const previous = parseDispatchAddressComponents(previousRaw);
+  if (!previous || !previous.streetLine || !previous.city || !previous.state || !previous.zip) return "";
+
+  const correction = extractAddressCorrectionParts(utteranceRaw);
+  if (!correction.streetLine && !correction.city && !correction.state && !correction.zip) return "";
+
+  const merged = formatDispatchAddressComponents({
+    streetLine: correction.streetLine || previous.streetLine,
+    city: correction.city || previous.city,
+    state: correction.state || previous.state,
+    zip: correction.zip || previous.zip,
+  });
+  const chk = analyzeUsServiceAddressCompleteness(merged);
+  return chk.ok ? chk.working : "";
+}
+
 function mergeIncrementalServiceAddress(previousRaw, utteranceRaw) {
   const a = extractBestDispatchAddressCandidate(previousRaw || "");
   const b = extractBestDispatchAddressCandidate(utteranceRaw || "");
@@ -2058,7 +2198,10 @@ function mergeIncrementalServiceAddress(previousRaw, utteranceRaw) {
   if (bAlone.ok) return bAlone.working;
 
   const aAlone = analyzeUsServiceAddressCompleteness(a);
-  if (aAlone.ok) return aAlone.working;
+  if (aAlone.ok) {
+    const corrected = mergeCompleteAddressCorrection(aAlone.working, utteranceRaw);
+    return corrected || aAlone.working;
+  }
 
   const combos = [
     normalizeAddressInput(`${a}, ${b}`),
