@@ -52,8 +52,9 @@ function stripDispatchConversationalLead(text) {
     const next = s
       .replace(/^(?:yes|yeah|yep|yup|sure|okay|ok|no|nope|nah)\b[,\s-]*/i, "")
       .replace(/^(?:and|so|well|uh|um|umm|like|right|alright)\b[,\s-]*/i, "")
+      .replace(/^(?:actually|wait|no wait|sorry|sorry about that|correction)\b[,\s-]*/i, "")
       .replace(/^(?:i live at|i'?m at|im at|we'?re at|were at|i am at|we are at)\b[,\s]*/i, "")
-      .replace(/^(?:my (?:service )?address is|(?:the )?(?:service )?address is|(?:the )?address is|address is)\b[,\s]*/i, "")
+      .replace(/^(?:my (?:service )?address is|(?:the )?(?:correct |right )?(?:service )?address is|(?:the )?address is|address is)\b[,\s]*/i, "")
       .replace(/^(?:it'?s|it is|its|located at|living at|live at)\b[,\s]*/i, "")
       .replace(/^(?:for reference|what i'?ve noted|what i have noted|service address is|noted)\b[,\s:-]*/i, "")
       .trim();
@@ -126,8 +127,169 @@ const US_STATE_FULL_SNIPPETS = [
   "washington dc","washington d c","west virginia","wisconsin","wyoming",
 ];
 
+const US_STATE_FULL_SNIPPETS_LONGEST = [...US_STATE_FULL_SNIPPETS].sort((a, b) => b.length - a.length);
+
 function abbreviationIsStreetSuffix(abbrUpper) {
   return ["ST","DR","RD","LN","AVE","BLVD","CT","PL","HWY","PKWY"].includes(abbrUpper);
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function splitSecondaryAddressFragment(raw) {
+  const value = normalizeAddressInput(raw || "").replace(/[,\s]+$/g, "").trim();
+  if (!value) return { street: "", secondary: "" };
+
+  const leadingSecondary = /^(?:apt\.?|apartment|suite|ste\.?|unit|lot|#)\s*#?[A-Za-z0-9-]+(?:\s+[A-Za-z0-9-]+)?$/i;
+  if (leadingSecondary.test(value)) return { street: "", secondary: value };
+
+  const trailingSecondary =
+    /(?:\b(?:apt\.?|apartment|suite|ste\.?|unit|lot)\s*#?[A-Za-z0-9-]+(?:\s+[A-Za-z0-9-]+)?|#\s*[A-Za-z0-9-]+)\s*$/i.exec(value);
+  if (trailingSecondary && trailingSecondary.index > 3) {
+    return {
+      street: value.slice(0, trailingSecondary.index).replace(/[,\s]+$/g, "").trim(),
+      secondary: trailingSecondary[0].trim(),
+    };
+  }
+
+  return { street: value, secondary: "" };
+}
+
+function parseStateAtEnd(raw) {
+  const value = cleanForSpeech(raw || "").replace(/[,\s]+$/g, "").trim();
+  if (!value) return null;
+
+  const abbr = /(?:^|[\s,])([A-Z]{2})$/i.exec(value);
+  if (abbr) {
+    const state = String(abbr[1] || "").toUpperCase();
+    if (US_STATE_ABBREV.has(state) && !abbreviationIsStreetSuffix(state)) {
+      return {
+        state,
+        rest: value.slice(0, abbr.index).replace(/[,\s]+$/g, "").trim(),
+      };
+    }
+  }
+
+  for (const name of US_STATE_FULL_SNIPPETS_LONGEST) {
+    const re = new RegExp(`(?:^|[,\\s])${escapeRegExp(name)}$`, "i");
+    const match = re.exec(value);
+    if (match) {
+      return {
+        state: match[0].replace(/^[,\s]+/, "").trim(),
+        rest: value.slice(0, match.index).replace(/[,\s]+$/g, "").trim(),
+      };
+    }
+  }
+
+  return null;
+}
+
+function parseCompleteDispatchAddress(raw) {
+  const working = normalizeAddressInput(raw || "");
+  if (!analyzeUsServiceAddressCompleteness(working).ok) return null;
+
+  const zipMatches = [...working.matchAll(/\b(\d{5}(?:-\d{4})?)\b/g)];
+  const zipMatch = zipMatches.length ? zipMatches[zipMatches.length - 1] : null;
+  if (!zipMatch || zipMatch.index == null) return null;
+
+  const zip = zipMatch[1];
+  const beforeZip = working.slice(0, zipMatch.index).replace(/[,\s]+$/g, "").trim();
+  const stateTail = parseStateAtEnd(beforeZip);
+  if (!stateTail || !stateTail.rest) return null;
+
+  const head = stateTail.rest;
+  let street = "";
+  let secondary = "";
+  let city = "";
+  const commaParts = head.split(",").map((p) => cleanForSpeech(p)).filter(Boolean);
+
+  if (commaParts.length >= 2) {
+    city = commaParts[commaParts.length - 1];
+    const streetParts = commaParts.slice(0, -1);
+    street = streetParts.shift() || "";
+    secondary = streetParts.join(", ");
+  } else {
+    const noComma = /^(\d{1,6}[A-Za-z\-#]?\s+.+\b(?:street|st|road|rd|avenue|ave|lane|ln|drive|dr|boulevard|blvd|court|ct|circle|cir|way|highway|hwy|parkway|pkwy|route|place|pl)\.?)\s+(.+)$/i.exec(head);
+    if (!noComma) return null;
+    street = noComma[1];
+    city = noComma[2];
+  }
+
+  if (!secondary) {
+    const split = splitSecondaryAddressFragment(street);
+    street = split.street || street;
+    secondary = split.secondary;
+  }
+
+  if (!street || !city) return null;
+  return { street, secondary, city, state: stateTail.state, zip };
+}
+
+function renderDispatchAddressParts(parts) {
+  const firstLine = [parts.street, parts.secondary].filter(Boolean).join(", ");
+  return normalizeAddressInput([firstLine, parts.city, `${parts.state} ${parts.zip}`].filter(Boolean).join(", "));
+}
+
+function parseCityStateZipCorrection(raw) {
+  const value = normalizeAddressInput(stripDispatchConversationalLead(raw || ""));
+  if (!value || dispatchLineHasStreetNumber(value)) return null;
+
+  const stateZipOnly = /^([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/i.exec(value);
+  if (stateZipOnly) {
+    const state = String(stateZipOnly[1] || "").toUpperCase();
+    if (US_STATE_ABBREV.has(state) && !abbreviationIsStreetSuffix(state)) {
+      return { state, zip: stateZipOnly[2] };
+    }
+  }
+
+  const cityStateZip = /^(.+?)[,\s]+([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/i.exec(value);
+  if (cityStateZip) {
+    const state = String(cityStateZip[2] || "").toUpperCase();
+    const city = cleanForSpeech(cityStateZip[1] || "").replace(/[,\s]+$/g, "").trim();
+    if (city && US_STATE_ABBREV.has(state) && !abbreviationIsStreetSuffix(state)) {
+      return { city, state, zip: cityStateZip[3] };
+    }
+  }
+
+  return null;
+}
+
+function mergePartialCorrectionIntoCompleteAddress(previousComplete, utterancePartial) {
+  const parts = parseCompleteDispatchAddress(previousComplete);
+  if (!parts) return "";
+
+  const partial = normalizeAddressInput(stripDispatchConversationalLead(utterancePartial || ""));
+  if (!partial) return "";
+
+  const zipOnly = /\b(\d{5}(?:-\d{4})?)\b/.exec(partial);
+  if (zipOnly && partial.replace(zipOnly[0], "").replace(/\b(?:zip|zipcode|zip code|code|is|it is|its|the)\b/gi, "").trim() === "") {
+    const candidate = renderDispatchAddressParts({ ...parts, zip: zipOnly[1] });
+    return analyzeUsServiceAddressCompleteness(candidate).ok ? candidate : "";
+  }
+
+  const tail = parseCityStateZipCorrection(partial);
+  if (tail) {
+    const candidate = renderDispatchAddressParts({ ...parts, ...tail });
+    return analyzeUsServiceAddressCompleteness(candidate).ok ? candidate : "";
+  }
+
+  const split = splitSecondaryAddressFragment(partial);
+  if (split.secondary && !split.street) {
+    const candidate = renderDispatchAddressParts({ ...parts, secondary: split.secondary });
+    return analyzeUsServiceAddressCompleteness(candidate).ok ? candidate : "";
+  }
+
+  if (split.street && dispatchLineHasStreetNumber(split.street)) {
+    const candidate = renderDispatchAddressParts({
+      ...parts,
+      street: split.street,
+      secondary: split.secondary || parts.secondary,
+    });
+    return analyzeUsServiceAddressCompleteness(candidate).ok ? candidate : "";
+  }
+
+  return "";
 }
 
 function analyzeUsServiceAddressCompleteness(raw) {
@@ -212,7 +374,10 @@ function mergeIncrementalServiceAddress(previousRaw, utteranceRaw) {
   if (bAlone.ok) return bAlone.working;
 
   const aAlone = analyzeUsServiceAddressCompleteness(a);
-  if (aAlone.ok) return aAlone.working;
+  if (aAlone.ok) {
+    const patched = mergePartialCorrectionIntoCompleteAddress(aAlone.working, b);
+    return patched || aAlone.working;
+  }
 
   const combos = [
     normalizeAddressInput(`${a}, ${b}`),
