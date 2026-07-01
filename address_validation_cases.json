@@ -101,5 +101,37 @@
     "address": "Service address is 5,402 Messner Reeves, yes I live at 5402 Mesnar Reeves, Las Vegas, Nevada, 89152",
     "expect": { "ok": true },
     "merged_must_include": ["89152", "5402"]
+  },
+  {
+    "name": "merge_complete_address_then_street_number_correction",
+    "merge": true,
+    "previous": "123 Main Street, Columbus, OH 43215",
+    "utterance": "actually it's 125 Main Street",
+    "expect": { "ok": true },
+    "merged_must_include": ["125 Main Street", "Columbus", "43215"]
+  },
+  {
+    "name": "merge_complete_address_then_unit_correction",
+    "merge": true,
+    "previous": "123 Main Street, Columbus, OH 43215",
+    "utterance": "apartment 2B",
+    "expect": { "ok": true },
+    "merged_must_include": ["123 Main Street", "apartment 2B", "43215"]
+  },
+  {
+    "name": "merge_complete_address_then_zip_correction",
+    "merge": true,
+    "previous": "123 Main Street, Columbus, OH 43215",
+    "utterance": "zip code is 43216",
+    "expect": { "ok": true },
+    "merged_must_include": ["123 Main Street", "Columbus", "43216"]
+  },
+  {
+    "name": "merge_complete_address_then_city_state_zip_correction",
+    "merge": true,
+    "previous": "123 Main Street, Columbus, OH 43215",
+    "utterance": "Dublin, OH 43017",
+    "expect": { "ok": true },
+    "merged_must_include": ["123 Main Street", "Dublin", "43017"]
   }
 ]
