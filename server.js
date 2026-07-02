@@ -1893,6 +1893,7 @@ function stripDispatchConversationalLead(text) {
     const next = s
       .replace(/^(?:yes|yeah|yep|yup|sure|okay|ok|no|nope|nah)\b[,\s-]*/i, "")
       .replace(/^(?:and|so|well|uh|um|umm|like|right|alright)\b[,\s-]*/i, "")
+      .replace(/^(?:actually|wait|no wait|sorry|sorry about that|correction)\b[,\s-]*/i, "")
       .replace(/^(?:i live at|i'?m at|im at|we'?re at|were at|i am at|we are at)\b[,\s]*/i, "")
       .replace(/^(?:my (?:service )?address is|(?:the )?(?:service )?address is|(?:the )?address is|address is)\b[,\s]*/i, "")
       .replace(/^(?:it'?s|it is|its|located at|living at|live at)\b[,\s]*/i, "")
@@ -1913,6 +1914,13 @@ function dispatchLineHasStreetNumber(safe) {
   if (/^\d{1,6}[A-Za-z\-#]?\s+\S/.test(firstComma)) return true;
   if (/\b\d{1,6}[A-Za-z\-#]?\s+[A-Za-z]/.test(trimmed)) return true;
   return false;
+}
+
+function leadingZipIsOnlyStreetNumberCandidateForDispatch(safe) {
+  const trimmed = String(safe || "").trim();
+  if (!/^\d{5}(?:-\d{4})?\s+\S/.test(trimmed)) return false;
+  const zipMatches = [...trimmed.matchAll(/\b\d{5}(?:-\d{4})?\b/g)];
+  return zipMatches.length === 1;
 }
 
 /**
@@ -1972,8 +1980,169 @@ const US_STATE_FULL_SNIPPETS_FOR_DISPATCH = [
   "washington dc","washington d c","west virginia","wisconsin","wyoming",
 ];
 
+const US_STATE_FULL_SNIPPETS_FOR_DISPATCH_LONGEST = [...US_STATE_FULL_SNIPPETS_FOR_DISPATCH].sort((a, b) => b.length - a.length);
+
 function abbreviationIsStreetSuffixForDispatch(abbrUpper) {
   return ["ST","DR","RD","LN","AVE","BLVD","CT","PL","HWY","PKWY"].includes(abbrUpper);
+}
+
+function escapeRegExpForDispatch(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function splitSecondaryAddressFragmentForDispatch(raw) {
+  const value = normalizeAddressInput(raw || "").replace(/[,\s]+$/g, "").trim();
+  if (!value) return { street: "", secondary: "" };
+
+  const leadingSecondary = /^(?:apt\.?|apartment|suite|ste\.?|unit|lot|#)\s*#?[A-Za-z0-9-]+(?:\s+[A-Za-z0-9-]+)?$/i;
+  if (leadingSecondary.test(value)) return { street: "", secondary: value };
+
+  const trailingSecondary =
+    /(?:\b(?:apt\.?|apartment|suite|ste\.?|unit|lot)\s*#?[A-Za-z0-9-]+(?:\s+[A-Za-z0-9-]+)?|#\s*[A-Za-z0-9-]+)\s*$/i.exec(value);
+  if (trailingSecondary && trailingSecondary.index > 3) {
+    return {
+      street: value.slice(0, trailingSecondary.index).replace(/[,\s]+$/g, "").trim(),
+      secondary: trailingSecondary[0].trim(),
+    };
+  }
+
+  return { street: value, secondary: "" };
+}
+
+function parseStateAtEndForDispatch(raw) {
+  const value = cleanForSpeech(raw || "").replace(/[,\s]+$/g, "").trim();
+  if (!value) return null;
+
+  const abbr = /(?:^|[\s,])([A-Z]{2})$/i.exec(value);
+  if (abbr) {
+    const state = String(abbr[1] || "").toUpperCase();
+    if (US_STATE_ABBREV_FOR_DISPATCH.has(state) && !abbreviationIsStreetSuffixForDispatch(state)) {
+      return {
+        state,
+        rest: value.slice(0, abbr.index).replace(/[,\s]+$/g, "").trim(),
+      };
+    }
+  }
+
+  for (const name of US_STATE_FULL_SNIPPETS_FOR_DISPATCH_LONGEST) {
+    const re = new RegExp(`(?:^|[,\\s])${escapeRegExpForDispatch(name)}$`, "i");
+    const match = re.exec(value);
+    if (match) {
+      return {
+        state: match[0].replace(/^[,\s]+/, "").trim(),
+        rest: value.slice(0, match.index).replace(/[,\s]+$/g, "").trim(),
+      };
+    }
+  }
+
+  return null;
+}
+
+function parseCompleteDispatchAddressForDispatch(raw) {
+  const working = normalizeAddressInput(raw || "");
+  if (!analyzeUsServiceAddressCompleteness(working).ok) return null;
+
+  const zipMatches = [...working.matchAll(/\b(\d{5}(?:-\d{4})?)\b/g)];
+  const zipMatch = zipMatches.length ? zipMatches[zipMatches.length - 1] : null;
+  if (!zipMatch || zipMatch.index == null) return null;
+
+  const zip = zipMatch[1];
+  const beforeZip = working.slice(0, zipMatch.index).replace(/[,\s]+$/g, "").trim();
+  const stateTail = parseStateAtEndForDispatch(beforeZip);
+  if (!stateTail || !stateTail.rest) return null;
+
+  const head = stateTail.rest;
+  let street = "";
+  let secondary = "";
+  let city = "";
+  const commaParts = head.split(",").map((p) => cleanForSpeech(p)).filter(Boolean);
+
+  if (commaParts.length >= 2) {
+    city = commaParts[commaParts.length - 1];
+    const streetParts = commaParts.slice(0, -1);
+    street = streetParts.shift() || "";
+    secondary = streetParts.join(", ");
+  } else {
+    const noComma = /^(\d{1,6}[A-Za-z\-#]?\s+.+\b(?:street|st|road|rd|avenue|ave|lane|ln|drive|dr|boulevard|blvd|court|ct|circle|cir|way|highway|hwy|parkway|pkwy|route|place|pl)\.?)\s+(.+)$/i.exec(head);
+    if (!noComma) return null;
+    street = noComma[1];
+    city = noComma[2];
+  }
+
+  if (!secondary) {
+    const split = splitSecondaryAddressFragmentForDispatch(street);
+    street = split.street || street;
+    secondary = split.secondary;
+  }
+
+  if (!street || !city) return null;
+  return { street, secondary, city, state: stateTail.state, zip };
+}
+
+function renderDispatchAddressPartsForDispatch(parts) {
+  const firstLine = [parts.street, parts.secondary].filter(Boolean).join(", ");
+  return normalizeAddressInput([firstLine, parts.city, `${parts.state} ${parts.zip}`].filter(Boolean).join(", "));
+}
+
+function parseCityStateZipCorrectionForDispatch(raw) {
+  const value = normalizeAddressInput(stripDispatchConversationalLead(raw || ""));
+  if (!value || dispatchLineHasStreetNumber(value)) return null;
+
+  const stateZipOnly = /^([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/i.exec(value);
+  if (stateZipOnly) {
+    const state = String(stateZipOnly[1] || "").toUpperCase();
+    if (US_STATE_ABBREV_FOR_DISPATCH.has(state) && !abbreviationIsStreetSuffixForDispatch(state)) {
+      return { state, zip: stateZipOnly[2] };
+    }
+  }
+
+  const cityStateZip = /^(.+?)[,\s]+([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/i.exec(value);
+  if (cityStateZip) {
+    const state = String(cityStateZip[2] || "").toUpperCase();
+    const city = cleanForSpeech(cityStateZip[1] || "").replace(/[,\s]+$/g, "").trim();
+    if (city && US_STATE_ABBREV_FOR_DISPATCH.has(state) && !abbreviationIsStreetSuffixForDispatch(state)) {
+      return { city, state, zip: cityStateZip[3] };
+    }
+  }
+
+  return null;
+}
+
+function mergePartialCorrectionIntoCompleteAddressForDispatch(previousComplete, utterancePartial) {
+  const parts = parseCompleteDispatchAddressForDispatch(previousComplete);
+  if (!parts) return "";
+
+  const partial = normalizeAddressInput(stripDispatchConversationalLead(utterancePartial || ""));
+  if (!partial) return "";
+
+  const zipOnly = /\b(\d{5}(?:-\d{4})?)\b/.exec(partial);
+  if (zipOnly && partial.replace(zipOnly[0], "").replace(/\b(?:zip|zipcode|zip code|code|is|it is|its|the)\b/gi, "").trim() === "") {
+    const candidate = renderDispatchAddressPartsForDispatch({ ...parts, zip: zipOnly[1] });
+    return analyzeUsServiceAddressCompleteness(candidate).ok ? candidate : "";
+  }
+
+  const tail = parseCityStateZipCorrectionForDispatch(partial);
+  if (tail) {
+    const candidate = renderDispatchAddressPartsForDispatch({ ...parts, ...tail });
+    return analyzeUsServiceAddressCompleteness(candidate).ok ? candidate : "";
+  }
+
+  const split = splitSecondaryAddressFragmentForDispatch(partial);
+  if (split.secondary && !split.street) {
+    const candidate = renderDispatchAddressPartsForDispatch({ ...parts, secondary: split.secondary });
+    return analyzeUsServiceAddressCompleteness(candidate).ok ? candidate : "";
+  }
+
+  if (split.street && dispatchLineHasStreetNumber(split.street)) {
+    const candidate = renderDispatchAddressPartsForDispatch({
+      ...parts,
+      street: split.street,
+      secondary: split.secondary || parts.secondary,
+    });
+    return analyzeUsServiceAddressCompleteness(candidate).ok ? candidate : "";
+  }
+
+  return "";
 }
 
 function analyzeUsServiceAddressCompleteness(raw) {
@@ -1988,6 +2157,7 @@ function analyzeUsServiceAddressCompleteness(raw) {
   const nt = normalizedText(safe);
 
   let hasStreet = dispatchLineHasStreetNumber(safe.trim());
+  if (hasStreet && leadingZipIsOnlyStreetNumberCandidateForDispatch(safe)) hasStreet = false;
 
   let hasStateAbbrev = false;
   const anchored = safe.trim();
@@ -2058,7 +2228,10 @@ function mergeIncrementalServiceAddress(previousRaw, utteranceRaw) {
   if (bAlone.ok) return bAlone.working;
 
   const aAlone = analyzeUsServiceAddressCompleteness(a);
-  if (aAlone.ok) return aAlone.working;
+  if (aAlone.ok) {
+    const patched = mergePartialCorrectionIntoCompleteAddressForDispatch(aAlone.working, b);
+    return patched || aAlone.working;
+  }
 
   const combos = [
     normalizeAddressInput(`${a}, ${b}`),
@@ -3668,12 +3841,36 @@ function isHumanAgentRequest(text) {
     "talk to a person", "talk to someone", "talk to a human", "talk to somebody",
     "speak with a person", "speak with someone", "speak with a human",
     "talk with a person", "talk with someone", "talk with a human",
-    "live agent", "live representative", "customer service rep", "customer service",
+    "live agent", "live representative", "customer service rep", "customer service representative",
     "transfer me", "connect me to someone", "connect me to a person",
     "get me a person", "get me someone", "put me through to someone",
     "speak to a rep", "talk to a rep", "real agent", "real representative"
   ])) return true;
   return /\b(can|could|may|want to|wanna|need to)\b.*\b(speak|talk)\b.*\b(person|someone|somebody|human|agent|representative|rep)\b/.test(t);
+}
+
+function hasLikelyIntakePayload(text) {
+  const t = normalizeIntentText(text);
+  if (!t) return false;
+  if (looksLikeIssueText(text)) return true;
+  if (/\b(dishwasher|fridge|freezer|refrigerator|oven|washer|dryer|furnace|air conditioner|a c|ac|toilet|sink|drain|water heater|pipe|roof|electrical)\b/.test(t) &&
+      /\b(won t|wont|not|broken|leak|leaking|clog|clogged|drain|draining|backed|smoke|smoking|spark|sparking|issue|problem|fix|repair|service)\b/.test(t)) {
+    return true;
+  }
+  if (/\b(address|street|st|road|rd|avenue|ave|lane|ln|drive|dr|suite|unit|apt|apartment|zip)\b/.test(t) && /\d/.test(t)) {
+    return true;
+  }
+  if (/\b(phone|number|callback|call back)\b/.test(t) && /\d{3}/.test(t)) {
+    return true;
+  }
+  return false;
+}
+
+function shouldAcknowledgeAutomatedServiceQuestion(text) {
+  const asksAboutHuman = isHumanAgentRequest(text);
+  const asksAboutAi = isAiIdentityQuestion(text);
+  if (!asksAboutHuman && !asksAboutAi) return false;
+  return !hasLikelyIntakePayload(text);
 }
 
 function isAiIdentityQuestion(text) {
@@ -7083,7 +7280,7 @@ async function handlePrompt(ws, caller, speech) {
     return;
   }
 
-  if (isHumanAgentRequest(text) || isAiIdentityQuestion(text)) {
+  if (shouldAcknowledgeAutomatedServiceQuestion(text)) {
     const ack = buildAutomatedServiceAcknowledgement(caller, text);
     const resume = buildResumePromptForCurrentStep(caller);
     sendText(ws, resume ? `${ack} ${resume}` : ack);
@@ -9499,6 +9696,33 @@ wss.on("connection", (ws, request) => {
 
 
 
+
+if (process.env.BLUE_CALLER_TEST_HUMAN_AGENT === "1") {
+  const casesPath = path.join(__dirname, "human_agent_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load human_agent_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  let passed = 0;
+  for (const tc of cases) {
+    const got = shouldAcknowledgeAutomatedServiceQuestion(tc.text);
+    const expect = Boolean(tc.expect_acknowledgement);
+    if (got === expect) {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    } else {
+      console.log(`FAIL  ${tc.name}`);
+      console.log(`  - expected acknowledgement=${expect} but got ${got} for text: ${JSON.stringify(tc.text)}`);
+    }
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} human-agent cases.`);
+  process.exit(passed === cases.length ? 0 : 1);
+}
 
 if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   const casesPath = path.join(__dirname, "wrap_up_cases.json");

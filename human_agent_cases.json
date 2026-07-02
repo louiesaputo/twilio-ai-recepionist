@@ -1,0 +1,27 @@
+[
+  {
+    "name": "simple_human_agent_request_acknowledged",
+    "text": "Can I speak to a human?",
+    "expect_acknowledgement": true
+  },
+  {
+    "name": "simple_ai_identity_question_acknowledged",
+    "text": "Are you a robot?",
+    "expect_acknowledgement": true
+  },
+  {
+    "name": "customer_service_issue_payload_not_swallowed",
+    "text": "I need customer service, my dishwasher won't drain.",
+    "expect_acknowledgement": false
+  },
+  {
+    "name": "talk_to_someone_issue_payload_not_swallowed",
+    "text": "I need to talk to someone because my dishwasher won't drain.",
+    "expect_acknowledgement": false
+  },
+  {
+    "name": "ai_question_with_emergency_payload_not_swallowed",
+    "text": "Are you a bot? My oven is smoking.",
+    "expect_acknowledgement": false
+  }
+]
