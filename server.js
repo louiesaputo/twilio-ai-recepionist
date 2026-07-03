@@ -3676,6 +3676,36 @@ function isHumanAgentRequest(text) {
   return /\b(can|could|may|want to|wanna|need to)\b.*\b(speak|talk)\b.*\b(person|someone|somebody|human|agent|representative|rep)\b/.test(t);
 }
 
+function hasLikelyIntakePayload(text) {
+  const t = normalizeIntentText(text);
+  if (!t) return false;
+
+  if (looksLikeIssueText(text) || detectServiceItem(text) || hasSpecificProblemDetail(text)) return true;
+
+  if (/\b(pipe|roof|electrical|electric|outlet|furnace|air conditioner|a c|ac)\b/.test(t) &&
+      /\b(won t|wont|not|broken|leak|leaking|clog|clogged|drain|draining|backed|smoke|smoking|spark|sparking|issue|problem|fix|repair|service)\b/.test(t)) {
+    return true;
+  }
+
+  if (/\b(address|street|st|road|rd|avenue|ave|lane|ln|drive|dr|suite|unit|apt|apartment|zip)\b/.test(t) && /\d/.test(t)) {
+    return true;
+  }
+
+  if (extractPhoneDigits(text).length >= 7) return true;
+
+  const nameMatch = text.match(/\b(?:my name is|this is|i am|i'm)\s+([A-Za-z' -]{3,80})/i);
+  if (nameMatch && hasFullName(normalizeNameCandidate(nameMatch[1]))) return true;
+
+  return false;
+}
+
+function shouldAcknowledgeAutomatedServiceQuestion(text) {
+  const asksAboutHuman = isHumanAgentRequest(text);
+  const asksAboutAi = isAiIdentityQuestion(text);
+  if (!asksAboutHuman && !asksAboutAi) return false;
+  return !hasLikelyIntakePayload(text);
+}
+
 function isAiIdentityQuestion(text) {
   const t = normalizeIntentText(text);
   if (!t) return false;
@@ -7083,7 +7113,7 @@ async function handlePrompt(ws, caller, speech) {
     return;
   }
 
-  if (isHumanAgentRequest(text) || isAiIdentityQuestion(text)) {
+  if (shouldAcknowledgeAutomatedServiceQuestion(text)) {
     const ack = buildAutomatedServiceAcknowledgement(caller, text);
     const resume = buildResumePromptForCurrentStep(caller);
     sendText(ws, resume ? `${ack} ${resume}` : ack);
@@ -9499,6 +9529,33 @@ wss.on("connection", (ws, request) => {
 
 
 
+
+if (process.env.BLUE_CALLER_TEST_HUMAN_AGENT === "1") {
+  const casesPath = path.join(__dirname, "human_agent_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load human_agent_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  let passed = 0;
+  for (const tc of cases) {
+    const got = shouldAcknowledgeAutomatedServiceQuestion(tc.text);
+    const expect = Boolean(tc.expect_acknowledgement);
+    if (got === expect) {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    } else {
+      console.log(`FAIL  ${tc.name}`);
+      console.log(`  - expected acknowledgement=${expect} but got ${got} for text: ${JSON.stringify(tc.text)}`);
+    }
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} human-agent cases.`);
+  process.exit(passed === cases.length ? 0 : 1);
+}
 
 if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   const casesPath = path.join(__dirname, "wrap_up_cases.json");
