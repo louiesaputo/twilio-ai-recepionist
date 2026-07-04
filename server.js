@@ -9658,6 +9658,8 @@ if (process.env.BLUE_CALLER_TEST_HUMAN_AGENT === "1") {
   });
 }
 
-server.listen(PORT, BIND_HOST, () => {
-  console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
-});
+if (process.env.BLUE_CALLER_TEST_HUMAN_AGENT !== "1") {
+  server.listen(PORT, BIND_HOST, () => {
+    console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
+  });
+}
