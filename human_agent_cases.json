@@ -1,0 +1,37 @@
+[
+  {
+    "name": "issue_request_to_talk_to_someone_about_ac",
+    "caller": { "lastStep": "ask_issue" },
+    "text": "I need to talk to someone about my AC not working.",
+    "expect_issue_includes": ["ac not working"],
+    "expect_last_step_not": ["ask_issue", "ask_issue_again"]
+  },
+  {
+    "name": "issue_again_request_to_talk_to_someone_about_refrigerator",
+    "caller": { "lastStep": "ask_issue_again" },
+    "text": "I need to talk to someone about my refrigerator not cooling.",
+    "expect_issue_includes": ["refrigerator", "not cooling"],
+    "expect_last_step_not": ["ask_issue", "ask_issue_again"]
+  },
+  {
+    "name": "ai_identity_words_inside_service_problem",
+    "caller": { "lastStep": "ask_issue_again" },
+    "text": "I'm not sure if this is a computer problem or an appliance issue.",
+    "expect_issue_includes": ["computer problem", "appliance issue"],
+    "expect_last_step_not": ["ask_issue", "ask_issue_again"]
+  },
+  {
+    "name": "standalone_human_request_still_acknowledged",
+    "caller": { "lastStep": "ask_issue" },
+    "text": "Can I talk to a person?",
+    "expect_issue_empty": true,
+    "expect_last_step": "ask_issue"
+  },
+  {
+    "name": "standalone_ai_question_still_acknowledged",
+    "caller": { "lastStep": "ask_issue" },
+    "text": "Are you a robot?",
+    "expect_issue_empty": true,
+    "expect_last_step": "ask_issue"
+  }
+]
