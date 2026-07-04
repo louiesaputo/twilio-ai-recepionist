@@ -3662,14 +3662,17 @@ function pricingResponse() {
 function isHumanAgentRequest(text) {
   const t = normalizeIntentText(text);
   if (!t) return false;
+  if (/\b(?:dont|don t|do not)\s+transfer me\b/.test(t)) return false;
+  if (/^(?:please\s+)?(?:customer service|transfer me)(?:\s+please)?$/.test(t)) return true;
   if (containsAny(t, [
     "real person", "live person", "actual person", "human being",
     "speak to a person", "speak to someone", "speak to a human", "speak to somebody",
     "talk to a person", "talk to someone", "talk to a human", "talk to somebody",
     "speak with a person", "speak with someone", "speak with a human",
     "talk with a person", "talk with someone", "talk with a human",
-    "live agent", "live representative", "customer service rep", "customer service",
-    "transfer me", "connect me to someone", "connect me to a person",
+    "live agent", "live representative", "customer service rep",
+    "transfer me to someone", "transfer me to a person", "transfer me to a human",
+    "transfer me to an agent", "connect me to someone", "connect me to a person",
     "get me a person", "get me someone", "put me through to someone",
     "speak to a rep", "talk to a rep", "real agent", "real representative"
   ])) return true;
@@ -3689,6 +3692,72 @@ function isAiIdentityQuestion(text) {
     "is this a computer", "virtual assistant", "automated system"
   ])) return true;
   return /\b(is this|are you|am i talking to|am i speaking to)\b.*\b(ai|bot|robot|computer|automated|virtual)\b/.test(t);
+}
+
+function hasSubstantiveServiceIntakeContent(text) {
+  const raw = cleanForSpeech(text || "");
+  if (!raw) return false;
+
+  const fragments = [raw, stripIssueLeadIn(raw)];
+  const aboutMatch = raw.match(/\b(?:about|regarding|because|for)\s+(.+)$/i);
+  if (aboutMatch && aboutMatch[1]) fragments.push(aboutMatch[1]);
+  const workMatch = raw.match(/\b(?:look at|check|fix|repair|service|work on)\s+(.+)$/i);
+  if (workMatch && workMatch[1]) fragments.push(workMatch[1]);
+
+  for (const fragment of fragments) {
+    const candidate = cleanForSpeech(fragment || "");
+    if (!candidate) continue;
+    if (
+      looksLikeIssueText(candidate) ||
+      detectServiceItem(candidate) ||
+      hasSpecificProblemDetail(candidate) ||
+      isDemoIntent(candidate) ||
+      isQuoteIntent(candidate) ||
+      isApplianceSchedulingOrServiceLead(candidate)
+    ) {
+      return true;
+    }
+  }
+
+  const t = normalizedText(raw);
+  return containsAny(t, [
+    "no ac", "no a c", "ac not", "a c not", "hvac", "furnace",
+    "air conditioning", "air conditioner", "no heat", "hot water",
+    "water main", "sewer backup", "sewage backup"
+  ]);
+}
+
+function hasSubstantiveResponseForCurrentStep(caller, text) {
+  const step = caller && caller.lastStep ? caller.lastStep : "";
+  if (new Set([
+    "ask_issue",
+    "ask_issue_again",
+    "ask_item_issue_detail",
+    "appliance_service_intake",
+    "final_question"
+  ]).has(step)) {
+    return hasSubstantiveServiceIntakeContent(text);
+  }
+  if (isPhoneCaptureStep(step)) return isLikelyPhoneNumberResponse(text);
+  if (step === "ask_address" || step === "confirm_address") {
+    const candidate = extractBestDispatchAddressCandidate(text || "");
+    return Boolean(candidate && /\d/.test(candidate));
+  }
+  if (new Set([
+    "ask_name",
+    "ask_last_name",
+    "ask_demo_followup_contact_name",
+    "capture_updated_contact_name"
+  ]).has(step)) {
+    return Boolean(parseFullNameFromSpeech(text || ""));
+  }
+  if (step === "ask_notes") return looksLikeSubstantiveTechNoteIntent(text);
+  return false;
+}
+
+function shouldAcknowledgeAutomatedServiceQuestion(caller, text) {
+  if (!(isHumanAgentRequest(text) || isAiIdentityQuestion(text))) return false;
+  return !hasSubstantiveResponseForCurrentStep(caller, text);
 }
 
 function buildAutomatedServiceAcknowledgement(caller, text) {
@@ -7083,7 +7152,7 @@ async function handlePrompt(ws, caller, speech) {
     return;
   }
 
-  if (isHumanAgentRequest(text) || isAiIdentityQuestion(text)) {
+  if (shouldAcknowledgeAutomatedServiceQuestion(caller, text)) {
     const ack = buildAutomatedServiceAcknowledgement(caller, text);
     const resume = buildResumePromptForCurrentStep(caller);
     sendText(ws, resume ? `${ack} ${resume}` : ack);
@@ -9527,6 +9596,70 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   process.exit(passed === cases.length ? 0 : 1);
 }
 
-server.listen(PORT, BIND_HOST, () => {
-  console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
-});
+if (process.env.BLUE_CALLER_TEST_HUMAN_AGENT === "1") {
+  const casesPath = path.join(__dirname, "human_agent_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load human_agent_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  async function runHumanAgentCases() {
+    let passed = 0;
+    for (const tc of cases) {
+      const sessionKey = `human-agent-test-${tc.name}`;
+      delete callerStore[sessionKey];
+      const caller = getOrCreateCaller(sessionKey);
+      Object.assign(caller, tc.caller || {});
+      const ws = { readyState: 0, sessionKey };
+
+      await handlePrompt(ws, caller, tc.text);
+
+      const failures = [];
+      if (tc.expect_issue_includes) {
+        const issue = normalizedText(caller.issue || "");
+        for (const expected of tc.expect_issue_includes) {
+          if (!issue.includes(normalizedText(expected))) {
+            failures.push(`expected issue to include ${JSON.stringify(expected)} but got ${JSON.stringify(caller.issue || "")}`);
+          }
+        }
+      }
+      if (Object.prototype.hasOwnProperty.call(tc, "expect_issue_empty")) {
+        const empty = !cleanForSpeech(caller.issue || "");
+        if (empty !== Boolean(tc.expect_issue_empty)) {
+          failures.push(`expected issue_empty=${Boolean(tc.expect_issue_empty)} but got issue=${JSON.stringify(caller.issue || "")}`);
+        }
+      }
+      if (tc.expect_last_step && caller.lastStep !== tc.expect_last_step) {
+        failures.push(`expected lastStep=${tc.expect_last_step} but got ${caller.lastStep}`);
+      }
+      if (Array.isArray(tc.expect_last_step_not) && tc.expect_last_step_not.includes(caller.lastStep)) {
+        failures.push(`expected lastStep not in ${JSON.stringify(tc.expect_last_step_not)} but got ${caller.lastStep}`);
+      }
+
+      if (failures.length === 0) {
+        passed += 1;
+        console.log(`PASS  ${tc.name}`);
+      } else {
+        console.log(`FAIL  ${tc.name}`);
+        for (const failure of failures) console.log(`  - ${failure}`);
+      }
+    }
+
+    console.log(`\nPassed ${passed} of ${cases.length} human/AI acknowledgement cases.`);
+    process.exit(passed === cases.length ? 0 : 1);
+  }
+
+  runHumanAgentCases().catch((err) => {
+    console.error("human/AI acknowledgement regression failed:", err);
+    process.exit(1);
+  });
+}
+
+if (process.env.BLUE_CALLER_TEST_HUMAN_AGENT !== "1") {
+  server.listen(PORT, BIND_HOST, () => {
+    console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
+  });
+}
