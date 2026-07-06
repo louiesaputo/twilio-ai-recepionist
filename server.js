@@ -3730,6 +3730,26 @@ function shouldAcknowledgeAutomatedServiceQuestion(caller, text) {
   return !hasSubstantiveAutomatedServiceRemainder(text);
 }
 
+function stripLeadingAutomatedServiceQuestion(text) {
+  const original = cleanSpeechText(text || "");
+  if (!original || !hasSubstantiveAutomatedServiceRemainder(original)) return original;
+
+  const patterns = [
+    /^(?:(?:can|could|may|would)\s+)?(?:i\s+)?(?:please\s+)?(?:(?:need|want|wanna)\s+to\s+)?(?:speak|talk)\s+(?:to|with)\s+(?:a\s+)?(?:real\s+|live\s+|actual\s+)?(?:person|someone|somebody|human|agent|representative|rep)\s*(?:\?|,|\.|;|:|-|\babout\b|\bbecause\b)?\s*/i,
+    /^(?:are\s+you|is\s+this|am\s+i\s+(?:talking|speaking)\s+to)\s+(?:an?\s+)?(?:ai|a\s*i|bot|robot|computer|automated|virtual(?:\s+assistant)?)(?:\s+system)?\s*(?:\?|,|\.|;|:|-|\bbecause\b)?\s*/i,
+    /^(?:is\s+this\s+)?(?:a\s+)?(?:real\s+person|live\s+person|automated\s+system|virtual\s+assistant)\s*(?:\?|,|\.|;|:|-|\bbecause\b)?\s*/i
+  ];
+
+  for (const pattern of patterns) {
+    const stripped = original.replace(pattern, "").trim();
+    if (stripped && stripped !== original && hasSubstantiveAutomatedServiceRemainder(stripped)) {
+      return stripped;
+    }
+  }
+
+  return original;
+}
+
 function buildAutomatedServiceAcknowledgement(caller, text) {
   if (isHumanAgentRequest(text)) {
     const pools = [
@@ -7096,7 +7116,7 @@ function applyFlexibleContactHarvest(ws, caller, text) {
 }
 
 async function handlePrompt(ws, caller, speech) {
-  const text = cleanSpeechText(speech || "");
+  let text = cleanSpeechText(speech || "");
   console.log("[PROMPT RECEIVED]", JSON.stringify({ step: caller.lastStep, text }));
   if (!text) {
     sendText(ws, "I'm sorry, I didn't catch that. Could you say that again?");
@@ -7129,6 +7149,7 @@ async function handlePrompt(ws, caller, speech) {
     return;
   }
 
+  text = stripLeadingAutomatedServiceQuestion(text);
 
 
 
@@ -9581,6 +9602,11 @@ if (process.env.BLUE_CALLER_TEST_HUMAN_AGENT === "1") {
     const needles = Array.isArray(expected) ? expected : [expected];
     return needles.every((needle) => haystack.includes(cleanForSpeech(needle || "").toLowerCase()));
   };
+  const includesAny = (value, expected) => {
+    const haystack = cleanForSpeech(value || "").toLowerCase();
+    const needles = Array.isArray(expected) ? expected : [expected];
+    return needles.some((needle) => haystack.includes(cleanForSpeech(needle || "").toLowerCase()));
+  };
 
   (async () => {
     let passed = 0;
@@ -9617,8 +9643,17 @@ if (process.env.BLUE_CALLER_TEST_HUMAN_AGENT === "1") {
       if (Object.prototype.hasOwnProperty.call(expect, "issueIncludes") && !includesAll(caller.issue || "", expect.issueIncludes)) {
         failures.push(`expected issue to include ${JSON.stringify(expect.issueIncludes)} but got ${JSON.stringify(caller.issue || "")}`);
       }
+      if (Object.prototype.hasOwnProperty.call(expect, "issueExcludes") && includesAny(caller.issue || "", expect.issueExcludes)) {
+        failures.push(`expected issue to exclude ${JSON.stringify(expect.issueExcludes)} but got ${JSON.stringify(caller.issue || "")}`);
+      }
       if (Object.prototype.hasOwnProperty.call(expect, "issueSummaryIncludes") && !includesAll(caller.issueSummary || "", expect.issueSummaryIncludes)) {
         failures.push(`expected issueSummary to include ${JSON.stringify(expect.issueSummaryIncludes)} but got ${JSON.stringify(caller.issueSummary || "")}`);
+      }
+      if (Object.prototype.hasOwnProperty.call(expect, "emergencyAlert") && Boolean(caller.emergencyAlert) !== Boolean(expect.emergencyAlert)) {
+        failures.push(`expected emergencyAlert=${expect.emergencyAlert} but got ${caller.emergencyAlert}`);
+      }
+      if (Object.prototype.hasOwnProperty.call(expect, "urgency") && caller.urgency !== expect.urgency) {
+        failures.push(`expected urgency=${expect.urgency} but got ${caller.urgency}`);
       }
       if (Object.prototype.hasOwnProperty.call(expect, "pendingNameNextStep") && caller.pendingNameNextStep !== expect.pendingNameNextStep) {
         failures.push(`expected pendingNameNextStep=${expect.pendingNameNextStep} but got ${caller.pendingNameNextStep}`);

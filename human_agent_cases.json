@@ -13,8 +13,10 @@
     "expect": {
       "lastStep": "ask_name",
       "issueIncludes": ["basement", "flooding", "burst pipe"],
-      "pendingNameNextStep": "leak_emergency_choice",
-      "responseIncludes": ["full first and last name"],
+      "issueExcludes": ["Can I talk to a person"],
+      "emergencyAlert": true,
+      "urgency": "emergency",
+      "responseIncludes": ["full name"],
       "responseExcludes": ["live person"]
     }
   },
@@ -24,7 +26,10 @@
     "expect": {
       "lastStep": "ask_name",
       "issueIncludes": ["no hot water"],
-      "responseIncludes": ["full first and last name"],
+      "issueExcludes": ["Are you AI"],
+      "emergencyAlert": true,
+      "urgency": "emergency",
+      "responseIncludes": ["full name"],
       "responseExcludes": ["automated assistant"]
     }
   }
