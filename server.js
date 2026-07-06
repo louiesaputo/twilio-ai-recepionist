@@ -3659,10 +3659,7 @@ function pricingResponse() {
   return "That is a great question. Pricing can vary depending on the job, so someone from the office will go over that with you when they call.";
 }
 
-function isHumanAgentRequest(text) {
-  const t = normalizeIntentText(text);
-  if (!t) return false;
-  if (containsAny(t, [
+const HUMAN_AGENT_REQUEST_PHRASES = [
     "real person", "live person", "actual person", "human being",
     "speak to a person", "speak to someone", "speak to a human", "speak to somebody",
     "talk to a person", "talk to someone", "talk to a human", "talk to somebody",
@@ -3672,23 +3669,65 @@ function isHumanAgentRequest(text) {
     "transfer me", "connect me to someone", "connect me to a person",
     "get me a person", "get me someone", "put me through to someone",
     "speak to a rep", "talk to a rep", "real agent", "real representative"
-  ])) return true;
+];
+
+const AI_IDENTITY_QUESTION_PHRASES = [
+  "are you ai", "are you a i", "is this ai", "is this a i",
+  "are you artificial", "artificial intelligence",
+  "are you a robot", "are you automated", "is this automated",
+  "is this a bot", "are you a bot", "talking to a bot",
+  "talking to ai", "talking to a computer", "speaking to ai",
+  "am i talking to ai", "am i speaking to ai",
+  "is this a computer", "virtual assistant", "automated system"
+];
+
+function isHumanAgentRequest(text) {
+  const t = normalizeIntentText(text);
+  if (!t) return false;
+  if (containsAny(t, HUMAN_AGENT_REQUEST_PHRASES)) return true;
   return /\b(can|could|may|want to|wanna|need to)\b.*\b(speak|talk)\b.*\b(person|someone|somebody|human|agent|representative|rep)\b/.test(t);
 }
 
 function isAiIdentityQuestion(text) {
   const t = normalizeIntentText(text);
   if (!t) return false;
-  if (containsAny(t, [
-    "are you ai", "are you a i", "is this ai", "is this a i",
-    "are you artificial", "artificial intelligence",
-    "are you a robot", "are you automated", "is this automated",
-    "is this a bot", "are you a bot", "talking to a bot",
-    "talking to ai", "talking to a computer", "speaking to ai",
-    "am i talking to ai", "am i speaking to ai",
-    "is this a computer", "virtual assistant", "automated system"
-  ])) return true;
+  if (containsAny(t, AI_IDENTITY_QUESTION_PHRASES)) return true;
   return /\b(is this|are you|am i talking to|am i speaking to)\b.*\b(ai|bot|robot|computer|automated|virtual)\b/.test(t);
+}
+
+function escapeRegexLiteral(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function hasSubstantiveAutomatedServiceRemainder(text) {
+  const t = normalizeIntentText(text);
+  if (!t) return false;
+
+  let remainder = ` ${t} `;
+  const removablePhrases = [...HUMAN_AGENT_REQUEST_PHRASES, ...AI_IDENTITY_QUESTION_PHRASES]
+    .map((phrase) => normalizeIntentText(phrase))
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+
+  for (const phrase of removablePhrases) {
+    const phrasePattern = escapeRegexLiteral(phrase).replace(/\s+/g, "\\s+");
+    remainder = remainder.replace(new RegExp(`\\b${phrasePattern}\\b`, "g"), " ");
+  }
+
+  remainder = remainder
+    .replace(/\b(?:can|could|may|would|do|does|did|is|are|am|i|me|my|you|your|we|us|our|to|a|an|the|this|that|there|please|just|really|actually|still|need|want|wanna|like|talk|speak|speaking|talking|with|someone|somebody|person|people|human|agent|representative|rep|customer|service|live|real|actual|being|transfer|connect|get|put|through|ai|bot|robot|computer|automated|automatic|artificial|intelligence|virtual|assistant|system|line|on|or|and|yes|yeah|yep|so|um|uh|hey|hello|hi|thanks|thank)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!remainder) return false;
+  return remainder
+    .split(/\s+/)
+    .some((token) => /\d/.test(token) || token.length > 2);
+}
+
+function shouldAcknowledgeAutomatedServiceQuestion(caller, text) {
+  if (!isHumanAgentRequest(text) && !isAiIdentityQuestion(text)) return false;
+  return !hasSubstantiveAutomatedServiceRemainder(text);
 }
 
 function buildAutomatedServiceAcknowledgement(caller, text) {
@@ -7083,7 +7122,7 @@ async function handlePrompt(ws, caller, speech) {
     return;
   }
 
-  if (isHumanAgentRequest(text) || isAiIdentityQuestion(text)) {
+  if (shouldAcknowledgeAutomatedServiceQuestion(caller, text)) {
     const ack = buildAutomatedServiceAcknowledgement(caller, text);
     const resume = buildResumePromptForCurrentStep(caller);
     sendText(ws, resume ? `${ack} ${resume}` : ack);
@@ -9527,6 +9566,89 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   process.exit(passed === cases.length ? 0 : 1);
 }
 
-server.listen(PORT, BIND_HOST, () => {
-  console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
-});
+if (process.env.BLUE_CALLER_TEST_HUMAN_AGENT === "1") {
+  const casesPath = path.join(__dirname, "human_agent_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load human_agent_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  const includesAll = (value, expected) => {
+    const haystack = cleanForSpeech(value || "").toLowerCase();
+    const needles = Array.isArray(expected) ? expected : [expected];
+    return needles.every((needle) => haystack.includes(cleanForSpeech(needle || "").toLowerCase()));
+  };
+
+  (async () => {
+    let passed = 0;
+    for (let i = 0; i < cases.length; i += 1) {
+      const tc = cases[i];
+      const key = `human-agent-test-${i}-${Date.now()}`;
+      const caller = getOrCreateCaller(key);
+      Object.assign(caller, tc.initial || {});
+
+      const sent = [];
+      const ws = {
+        readyState: 1,
+        sessionKey: key,
+        send(payload) {
+          try {
+            const parsed = JSON.parse(payload);
+            sent.push(parsed.token || "");
+          } catch (err) {
+            sent.push(String(payload || ""));
+          }
+        }
+      };
+
+      await handlePrompt(ws, caller, tc.speech || "");
+      await new Promise((resolve) => setTimeout(resolve, Math.max(180, RESPONSE_THINK_DELAY_MS + 160)));
+
+      const expect = tc.expect || {};
+      const failures = [];
+      const response = sent.join(" ");
+
+      if (Object.prototype.hasOwnProperty.call(expect, "lastStep") && caller.lastStep !== expect.lastStep) {
+        failures.push(`expected lastStep=${expect.lastStep} but got ${caller.lastStep}`);
+      }
+      if (Object.prototype.hasOwnProperty.call(expect, "issueIncludes") && !includesAll(caller.issue || "", expect.issueIncludes)) {
+        failures.push(`expected issue to include ${JSON.stringify(expect.issueIncludes)} but got ${JSON.stringify(caller.issue || "")}`);
+      }
+      if (Object.prototype.hasOwnProperty.call(expect, "issueSummaryIncludes") && !includesAll(caller.issueSummary || "", expect.issueSummaryIncludes)) {
+        failures.push(`expected issueSummary to include ${JSON.stringify(expect.issueSummaryIncludes)} but got ${JSON.stringify(caller.issueSummary || "")}`);
+      }
+      if (Object.prototype.hasOwnProperty.call(expect, "pendingNameNextStep") && caller.pendingNameNextStep !== expect.pendingNameNextStep) {
+        failures.push(`expected pendingNameNextStep=${expect.pendingNameNextStep} but got ${caller.pendingNameNextStep}`);
+      }
+      if (Object.prototype.hasOwnProperty.call(expect, "responseIncludes") && !includesAll(response, expect.responseIncludes)) {
+        failures.push(`expected response to include ${JSON.stringify(expect.responseIncludes)} but got ${JSON.stringify(response)}`);
+      }
+      if (Object.prototype.hasOwnProperty.call(expect, "responseExcludes") && includesAll(response, expect.responseExcludes)) {
+        failures.push(`expected response to exclude ${JSON.stringify(expect.responseExcludes)} but got ${JSON.stringify(response)}`);
+      }
+
+      if (failures.length === 0) {
+        passed += 1;
+        console.log(`PASS  ${tc.name}`);
+      } else {
+        console.log(`FAIL  ${tc.name}`);
+        for (const f of failures) console.log(`  - ${f}`);
+      }
+
+      delete callerStore[key];
+    }
+
+    console.log(`\nPassed ${passed} of ${cases.length} human-agent cases.`);
+    process.exit(passed === cases.length ? 0 : 1);
+  })().catch((err) => {
+    console.error("human-agent regression failed:", err);
+    process.exit(1);
+  });
+} else {
+  server.listen(PORT, BIND_HOST, () => {
+    console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
+  });
+}
