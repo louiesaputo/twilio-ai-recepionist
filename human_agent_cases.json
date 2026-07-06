@@ -27,8 +27,8 @@
       "lastStep": "ask_name",
       "issueIncludes": ["no hot water"],
       "issueExcludes": ["Are you AI"],
-      "emergencyAlert": true,
-      "urgency": "emergency",
+      "emergencyAlert": false,
+      "urgency": "normal",
       "responseIncludes": ["full name"],
       "responseExcludes": ["automated assistant"]
     }
