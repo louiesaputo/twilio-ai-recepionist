@@ -8,7 +8,8 @@
     "test": "npm run test:local",
     "test:address": "node run_address_validation_cases.js",
     "test:wrapup": "node run_wrap_up_cases.js",
-    "test:local": "node run_address_validation_cases.js && node run_wrap_up_cases.js",
+    "test:human-agent": "node run_human_agent_cases.js",
+    "test:local": "node run_address_validation_cases.js && node run_wrap_up_cases.js && node run_human_agent_cases.js",
     "test:extractors": "node run_regression_cases.js"
   },
   "keywords": [],

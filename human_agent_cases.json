@@ -1,0 +1,36 @@
+[
+  {
+    "name": "standalone live-agent request is acknowledged and intake resumes",
+    "speech": "Can I talk to a person?",
+    "expect": {
+      "lastStep": "ask_issue",
+      "responseIncludes": ["live person", "How can I help"]
+    }
+  },
+  {
+    "name": "live-agent request with emergency details still captures the issue",
+    "speech": "Can I talk to a person? My basement is flooding from a burst pipe.",
+    "expect": {
+      "lastStep": "ask_name",
+      "issueIncludes": ["basement", "flooding", "burst pipe"],
+      "issueExcludes": ["Can I talk to a person"],
+      "emergencyAlert": true,
+      "urgency": "emergency",
+      "responseIncludes": ["full name"],
+      "responseExcludes": ["live person"]
+    }
+  },
+  {
+    "name": "ai identity question with outage details still captures the issue",
+    "speech": "Are you AI? We have no hot water in the building.",
+    "expect": {
+      "lastStep": "ask_name",
+      "issueIncludes": ["no hot water"],
+      "issueExcludes": ["Are you AI"],
+      "emergencyAlert": false,
+      "urgency": "normal",
+      "responseIncludes": ["full name"],
+      "responseExcludes": ["automated assistant"]
+    }
+  }
+]
