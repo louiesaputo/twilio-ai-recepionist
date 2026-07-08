@@ -1,0 +1,39 @@
+[
+  {
+    "name": "standalone_human_request_ack_only",
+    "text": "Can I speak to someone?",
+    "caller": { "lastStep": "ask_issue" },
+    "expect": {
+      "issue": "",
+      "lastStep": "ask_issue"
+    }
+  },
+  {
+    "name": "mixed_human_request_keeps_issue",
+    "text": "I need to speak to someone about my leaking water heater",
+    "caller": { "lastStep": "ask_issue" },
+    "expect": {
+      "issue_includes": ["leaking water heater"],
+      "lastStep_not": "ask_issue"
+    }
+  },
+  {
+    "name": "mixed_ai_question_keeps_address",
+    "text": "123 Main Street, Springfield, IL 62701 are you AI",
+    "caller": {
+      "lastStep": "ask_address",
+      "fullName": "Jane Doe",
+      "firstName": "Jane",
+      "phone": "6145551212",
+      "callbackNumber": "6145551212",
+      "callbackConfirmed": true,
+      "issue": "leaking sink",
+      "issueSummary": "sink leak"
+    },
+    "expect": {
+      "address_includes": ["123 Main Street", "Springfield", "62701"],
+      "address_excludes": ["AI"],
+      "lastStep": "confirm_address"
+    }
+  }
+]

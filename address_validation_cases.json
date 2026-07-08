@@ -96,6 +96,14 @@
     "merged_must_include": ["89152", "Las Vegas"]
   },
   {
+    "name": "merge_unit_fragment_then_full_restatement",
+    "merge": true,
+    "previous": "123 Main Street Unit 5B",
+    "utterance": "123 Main Street, Springfield, IL 62701",
+    "expect": { "ok": true },
+    "merged_must_include": ["Unit 5B", "Springfield", "62701"]
+  },
+  {
     "name": "extract_from_accumulated_notes",
     "extract": true,
     "address": "Service address is 5,402 Messner Reeves, yes I live at 5402 Mesnar Reeves, Las Vegas, Nevada, 89152",

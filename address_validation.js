@@ -201,6 +201,41 @@ function analyzeUsServiceAddressCompleteness(raw) {
   return { ok, missing: ok ? [] : missing, working };
 }
 
+function extractSupplementalAddressDetail(previousRaw, completeRaw) {
+  const previous = normalizeAddressInput(previousRaw || "");
+  const complete = normalizeAddressInput(completeRaw || "");
+  const completeNorm = normalizedText(complete);
+  if (!previous || !complete) return "";
+
+  const patterns = [
+    /\b(?:(?:apartment|apt|unit|suite|ste|lot|space|building|bldg|floor|fl)\s+|#\s*)[A-Za-z0-9-]+\b/i,
+    /\b(?:gate code|access code|door code|lockbox code)\s*(?:is\s*)?[#A-Za-z0-9-]+\b/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = previous.match(pattern);
+    if (!match) continue;
+    const detail = normalizeAddressInput(match[0]);
+    if (detail && !completeNorm.includes(normalizedText(detail))) return detail;
+  }
+
+  return "";
+}
+
+function mergeCompleteAddressWithSupplementalDetails(completeRaw, supplementalRaw) {
+  const complete = normalizeAddressInput(completeRaw || "");
+  const supplemental = extractSupplementalAddressDetail(supplementalRaw || "", complete);
+  if (!supplemental) return complete;
+
+  const parts = complete.split(",").map((p) => p.trim());
+  if (parts.length > 1) {
+    parts[0] = normalizeAddressInput(`${parts[0]} ${supplemental}`);
+    return parts.filter(Boolean).join(", ");
+  }
+
+  return normalizeAddressInput(`${complete} ${supplemental}`);
+}
+
 function mergeIncrementalServiceAddress(previousRaw, utteranceRaw) {
   const a = extractBestDispatchAddressCandidate(previousRaw || "");
   const b = extractBestDispatchAddressCandidate(utteranceRaw || "");
@@ -209,10 +244,9 @@ function mergeIncrementalServiceAddress(previousRaw, utteranceRaw) {
   if (normalizedText(a) === normalizedText(b)) return a;
 
   const bAlone = analyzeUsServiceAddressCompleteness(b);
-  if (bAlone.ok) return bAlone.working;
-
   const aAlone = analyzeUsServiceAddressCompleteness(a);
-  if (aAlone.ok) return aAlone.working;
+  if (bAlone.ok) return mergeCompleteAddressWithSupplementalDetails(bAlone.working, a);
+  if (aAlone.ok) return mergeCompleteAddressWithSupplementalDetails(aAlone.working, b);
 
   const combos = [
     normalizeAddressInput(`${a}, ${b}`),

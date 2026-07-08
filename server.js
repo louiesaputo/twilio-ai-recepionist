@@ -2047,6 +2047,41 @@ function analyzeUsServiceAddressCompleteness(raw) {
   return { ok, missing: ok ? [] : missing, working };
 }
 
+function extractSupplementalAddressDetail(previousRaw, completeRaw) {
+  const previous = normalizeAddressInput(previousRaw || "");
+  const complete = normalizeAddressInput(completeRaw || "");
+  const completeNorm = normalizedText(complete);
+  if (!previous || !complete) return "";
+
+  const patterns = [
+    /\b(?:(?:apartment|apt|unit|suite|ste|lot|space|building|bldg|floor|fl)\s+|#\s*)[A-Za-z0-9-]+\b/i,
+    /\b(?:gate code|access code|door code|lockbox code)\s*(?:is\s*)?[#A-Za-z0-9-]+\b/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = previous.match(pattern);
+    if (!match) continue;
+    const detail = normalizeAddressInput(match[0]);
+    if (detail && !completeNorm.includes(normalizedText(detail))) return detail;
+  }
+
+  return "";
+}
+
+function mergeCompleteAddressWithSupplementalDetails(completeRaw, supplementalRaw) {
+  const complete = normalizeAddressInput(completeRaw || "");
+  const supplemental = extractSupplementalAddressDetail(supplementalRaw || "", complete);
+  if (!supplemental) return complete;
+
+  const parts = complete.split(",").map((p) => p.trim());
+  if (parts.length > 1) {
+    parts[0] = normalizeAddressInput(`${parts[0]} ${supplemental}`);
+    return parts.filter(Boolean).join(", ");
+  }
+
+  return normalizeAddressInput(`${complete} ${supplemental}`);
+}
+
 function mergeIncrementalServiceAddress(previousRaw, utteranceRaw) {
   const a = extractBestDispatchAddressCandidate(previousRaw || "");
   const b = extractBestDispatchAddressCandidate(utteranceRaw || "");
@@ -2055,10 +2090,9 @@ function mergeIncrementalServiceAddress(previousRaw, utteranceRaw) {
   if (normalizedText(a) === normalizedText(b)) return a;
 
   const bAlone = analyzeUsServiceAddressCompleteness(b);
-  if (bAlone.ok) return bAlone.working;
-
   const aAlone = analyzeUsServiceAddressCompleteness(a);
-  if (aAlone.ok) return aAlone.working;
+  if (bAlone.ok) return mergeCompleteAddressWithSupplementalDetails(bAlone.working, a);
+  if (aAlone.ok) return mergeCompleteAddressWithSupplementalDetails(aAlone.working, b);
 
   const combos = [
     normalizeAddressInput(`${a}, ${b}`),
@@ -3704,6 +3738,62 @@ function buildAutomatedServiceAcknowledgement(caller, text) {
     "That's right—this is an AI demo line. I can keep going whenever you're ready.",
   ];
   return pools[nextPromptIndex(caller, "aiIdentityAckIx") % pools.length];
+}
+
+function stripAutomatedServiceMetaFromIntake(text) {
+  let s = cleanSpeechText(text || "");
+  if (!s) return "";
+
+  const leadingPatterns = [
+    /^(?:can|could|may)\s+i\s+(?:please\s+)?(?:speak|talk)\s+(?:to|with)\s+(?:a\s+)?(?:real\s+|live\s+|actual\s+)?(?:person|someone|somebody|human|agent|representative|rep)\s*(?:about|regarding|for|because|with|that|and|,|-)?\s+(.+)$/i,
+    /^(?:i\s+)?(?:want|need|wanna|would like)\s+(?:to\s+)?(?:speak|talk)\s+(?:to|with)\s+(?:a\s+)?(?:real\s+|live\s+|actual\s+)?(?:person|someone|somebody|human|agent|representative|rep)\s*(?:about|regarding|for|because|with|that|and|,|-)?\s+(.+)$/i,
+    /^(?:transfer|connect|get|put)\s+me\s+(?:through\s+)?(?:to\s+)?(?:a\s+)?(?:real\s+|live\s+|actual\s+)?(?:person|someone|somebody|human|agent|representative|rep)\s*(?:about|regarding|for|because|with|that|and|,|-)?\s+(.+)$/i,
+    /^(?:are you|is this|am i (?:talking|speaking) to)\s+(?:an?\s+)?(?:ai|a i|bot|robot|computer|automated(?:\s+system)?|virtual assistant)\s*(?:because|since|and|,|-)?\s+(.+)$/i,
+    /^(?:i'?m|i am)?\s*(?:talking|speaking)\s+to\s+(?:an?\s+)?(?:ai|a i|bot|robot|computer)\s*(?:about|because|since|and|,|-)?\s+(.+)$/i,
+  ];
+
+  for (const pattern of leadingPatterns) {
+    const match = s.match(pattern);
+    if (match && cleanSpeechText(match[1] || "")) {
+      s = cleanSpeechText(match[1]);
+      break;
+    }
+  }
+
+  const trailingPatterns = [
+    /\s*(?:,|-|and)?\s*(?:are you|is this|am i (?:talking|speaking) to)\s+(?:an?\s+)?(?:ai|a i|bot|robot|computer|automated(?:\s+system)?|virtual assistant)\??\s*$/i,
+    /\s*(?:,|-|and)?\s*(?:can|could|may)\s+i\s+(?:please\s+)?(?:speak|talk)\s+(?:to|with)\s+(?:a\s+)?(?:real\s+|live\s+|actual\s+)?(?:person|someone|somebody|human|agent|representative|rep)\??\s*$/i,
+  ];
+
+  for (const pattern of trailingPatterns) {
+    s = s.replace(pattern, "").trim();
+  }
+
+  return cleanSpeechText(s);
+}
+
+function looksLikeActionableIntakeText(text) {
+  const t = normalizedText(text || "");
+  if (!t) return false;
+  if (looksLikeIssueText(t)) return true;
+  if (containsAny(t, [
+    "repair", "fix", "broken", "not working", "service call", "appointment", "schedule",
+    "scheduling", "install", "installation", "replace", "replacement"
+  ])) return true;
+  if (extractTenDigitUsPhoneFromUtterance(t)) return true;
+  if (analyzeUsServiceAddressCompleteness(extractBestDispatchAddressCandidate(t)).ok) return true;
+  if (/\b(?:address|unit|apt|apartment|suite|gate code|zip|phone|number|my name is|this is|i am|i'm)\b/i.test(t)) {
+    return true;
+  }
+  return false;
+}
+
+function shouldAcknowledgeAutomatedServiceQuestionOnly(text) {
+  const stripped = stripAutomatedServiceMetaFromIntake(text || "");
+  if (normalizedText(stripped) !== normalizedText(text || "") && looksLikeActionableIntakeText(stripped)) {
+    return false;
+  }
+  return !looksLikeActionableIntakeText(text || "");
 }
 
 
@@ -7057,7 +7147,7 @@ function applyFlexibleContactHarvest(ws, caller, text) {
 }
 
 async function handlePrompt(ws, caller, speech) {
-  const text = cleanSpeechText(speech || "");
+  let text = cleanSpeechText(speech || "");
   console.log("[PROMPT RECEIVED]", JSON.stringify({ step: caller.lastStep, text }));
   if (!text) {
     sendText(ws, "I'm sorry, I didn't catch that. Could you say that again?");
@@ -7084,10 +7174,14 @@ async function handlePrompt(ws, caller, speech) {
   }
 
   if (isHumanAgentRequest(text) || isAiIdentityQuestion(text)) {
-    const ack = buildAutomatedServiceAcknowledgement(caller, text);
-    const resume = buildResumePromptForCurrentStep(caller);
-    sendText(ws, resume ? `${ack} ${resume}` : ack);
-    return;
+    if (shouldAcknowledgeAutomatedServiceQuestionOnly(text)) {
+      const ack = buildAutomatedServiceAcknowledgement(caller, text);
+      const resume = buildResumePromptForCurrentStep(caller);
+      sendText(ws, resume ? `${ack} ${resume}` : ack);
+      return;
+    }
+    const intakeText = stripAutomatedServiceMetaFromIntake(text);
+    if (intakeText) text = intakeText;
   }
 
 
@@ -9500,7 +9594,93 @@ wss.on("connection", (ws, request) => {
 
 
 
-if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
+async function runHumanAgentPromptCases() {
+  const casesPath = path.join(__dirname, "human_agent_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load human_agent_cases.json:", err.message);
+    return 1;
+  }
+
+  let passed = 0;
+  for (let i = 0; i < cases.length; i += 1) {
+    const tc = cases[i];
+    const sessionKey = `human-agent-case-${i}`;
+    delete callerStore[sessionKey];
+    const caller = getOrCreateCaller(sessionKey);
+    Object.assign(caller, tc.caller || {});
+
+    const sent = [];
+    const ws = {
+      readyState: 1,
+      sessionKey,
+      send(payload) {
+        sent.push(payload);
+      },
+    };
+
+    try {
+      await handlePrompt(ws, caller, tc.text || "");
+    } catch (err) {
+      console.log(`FAIL  ${tc.name}`);
+      console.log(`  - handlePrompt threw: ${err && err.message}`);
+      continue;
+    }
+
+    const failures = [];
+    const expect = tc.expect || {};
+    for (const [field, value] of Object.entries(expect)) {
+      if (field.endsWith("_includes")) {
+        const callerField = field.slice(0, -"_includes".length);
+        const actual = String(caller[callerField] || "").toLowerCase();
+        for (const fragment of value || []) {
+          if (!actual.includes(String(fragment).toLowerCase())) {
+            failures.push(`${callerField} should include ${JSON.stringify(fragment)} but got ${JSON.stringify(caller[callerField] || "")}`);
+          }
+        }
+      } else if (field.endsWith("_excludes")) {
+        const callerField = field.slice(0, -"_excludes".length);
+        const actual = String(caller[callerField] || "").toLowerCase();
+        for (const fragment of value || []) {
+          if (actual.includes(String(fragment).toLowerCase())) {
+            failures.push(`${callerField} should not include ${JSON.stringify(fragment)} but got ${JSON.stringify(caller[callerField] || "")}`);
+          }
+        }
+      } else if (field.endsWith("_not")) {
+        const callerField = field.slice(0, -"_not".length);
+        if (caller[callerField] === value) {
+          failures.push(`${callerField} should not be ${JSON.stringify(value)}`);
+        }
+      } else if (caller[field] !== value) {
+        failures.push(`${field} expected ${JSON.stringify(value)} but got ${JSON.stringify(caller[field])}`);
+      }
+    }
+
+    if (failures.length === 0) {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    } else {
+      console.log(`FAIL  ${tc.name}`);
+      for (const failure of failures) console.log(`  - ${failure}`);
+    }
+
+    delete callerStore[sessionKey];
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} human/AI acknowledgement cases.`);
+  return passed === cases.length ? 0 : 1;
+}
+
+if (process.env.BLUE_CALLER_TEST_HUMAN_AGENT === "1") {
+  runHumanAgentPromptCases()
+    .then((code) => process.exit(code))
+    .catch((err) => {
+      console.error("human/AI acknowledgement regression failed:", err);
+      process.exit(1);
+    });
+} else if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   const casesPath = path.join(__dirname, "wrap_up_cases.json");
   let cases;
   try {
@@ -9525,8 +9705,8 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
 
   console.log(`\nPassed ${passed} of ${cases.length} wrap-up cases.`);
   process.exit(passed === cases.length ? 0 : 1);
+} else {
+  server.listen(PORT, BIND_HOST, () => {
+    console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
+  });
 }
-
-server.listen(PORT, BIND_HOST, () => {
-  console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
-});
