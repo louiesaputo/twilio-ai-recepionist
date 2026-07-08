@@ -32,7 +32,7 @@
     },
     "expect": {
       "address_includes": ["123 Main Street", "Springfield", "62701"],
-      "address_excludes": ["AI"],
+      "address_excludes": ["are you"],
       "lastStep": "confirm_address"
     }
   }
