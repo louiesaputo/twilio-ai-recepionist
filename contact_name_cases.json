@@ -1,0 +1,47 @@
+[
+  {
+    "name": "explicit_contact_name_change",
+    "text": "Change the contact to Thomas Wright",
+    "expect_name": "Thomas Wright"
+  },
+  {
+    "name": "explicit_contact_name_change_with_instead",
+    "text": "Yes, change it to Thomas Wright instead",
+    "expect_name": "Thomas Wright"
+  },
+  {
+    "name": "spouse_name_change",
+    "text": "Use my wife Mary Smith",
+    "expect_name": "Mary Smith"
+  },
+  {
+    "name": "direct_name_answer",
+    "text": "Thomas Wright",
+    "expect_name": "Thomas Wright"
+  },
+  {
+    "name": "phone_change_is_not_a_name",
+    "text": "I want to change the contact to use the phone ending in 4521",
+    "expect_name": ""
+  },
+  {
+    "name": "reach_instruction_is_not_a_name",
+    "text": "Change the contact name to reach Tom at work",
+    "expect_name": ""
+  },
+  {
+    "name": "cell_phone_is_not_a_name",
+    "text": "Change the contact person to my cell phone instead",
+    "expect_name": ""
+  },
+  {
+    "name": "conversational_request_is_not_stored_verbatim",
+    "text": "I need to talk to Thomas Wright instead",
+    "expect_name": ""
+  },
+  {
+    "name": "routing_instruction_is_not_stored_verbatim",
+    "text": "It should go to Thomas Wright",
+    "expect_name": ""
+  }
+]
