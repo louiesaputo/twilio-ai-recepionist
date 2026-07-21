@@ -2917,19 +2917,38 @@ function isPostIntakeContactUpdateIntent(text) {
 
 
 
+function parseUpdatedContactNameCandidate(rawName) {
+  const safe = cleanForSpeech(rawName || "")
+    .replace(/\s+instead\s*$/i, "")
+    .trim();
+  const parsed = parseFullNameFromSpeech(safe);
+  if (!parsed) return "";
+
+  const blockedWords = new Set([
+    "callback", "cell", "change", "contact", "ending", "forward", "go", "instead",
+    "name", "number", "person", "phone", "reach", "should", "switch", "talk",
+    "update", "use", "want", "work",
+  ]);
+  const words = normalizeIntentText(parsed).split(/\s+/).filter(Boolean);
+  if (words.some((word) => blockedWords.has(word))) return "";
+
+  return parsed;
+}
+
+
 function extractUpdatedContactNameFromSpeech(text) {
   const safe = cleanForSpeech(text || "");
   if (!safe) return "";
 
   const rawSpouse = safe.match(/(?:my\s+wife|my\s+husband)\s+([A-Za-z'-]+(?:\s+[A-Za-z'-]+){0,2})\b/i);
   if (rawSpouse) {
-    const spouseCandidate = parseFullNameFromSpeech(rawSpouse[1]);
+    const spouseCandidate = parseUpdatedContactNameCandidate(rawSpouse[1]);
     if (spouseCandidate) return spouseCandidate;
   }
 
   const rawNamed = safe.match(/(?:her|his)\s+name\s+is\s+([A-Za-z'-]+(?:\s+[A-Za-z'-]+){0,2})\b/i);
   if (rawNamed) {
-    const namedCandidate = parseFullNameFromSpeech(rawNamed[1]);
+    const namedCandidate = parseUpdatedContactNameCandidate(rawNamed[1]);
     if (namedCandidate) return namedCandidate;
   }
 
@@ -2941,13 +2960,13 @@ function extractUpdatedContactNameFromSpeech(text) {
     /(?:change|switch|update)\s+(?:it|that|my\s+contact|the\s+contact(?:\s+person)?|the\s+name|the\s+contact\s+name)\s+to\s+([A-Za-z' -]+(?:\s+[A-Za-z' -]+){0,3})/i
   );
   if (explicitToName) {
-    const candidate = parseFullNameFromSpeech(explicitToName[1].replace(/[.,!?]+$/g, "").trim());
+    const candidate = parseUpdatedContactNameCandidate(explicitToName[1].replace(/[.,!?]+$/g, "").trim());
     if (candidate) return candidate;
   }
 
   const gluedToName = safe.match(/\b(?:change|switch|update)\s*it\s*to\s+([A-Za-z' -]+(?:\s+[A-Za-z' -]+){0,3})/i);
   if (gluedToName) {
-    const candidate = parseFullNameFromSpeech(gluedToName[1].replace(/[.,!?]+$/g, "").trim());
+    const candidate = parseUpdatedContactNameCandidate(gluedToName[1].replace(/[.,!?]+$/g, "").trim());
     if (candidate) return candidate;
   }
 
@@ -2956,7 +2975,7 @@ function extractUpdatedContactNameFromSpeech(text) {
     if (segments.length >= 2) {
       const rhs = segments[segments.length - 1].replace(/[.,!?]+$/g, "").trim();
       if (rhs && !/^(the|a|an)\s+/i.test(rhs)) {
-        const candidate = parseFullNameFromSpeech(rhs);
+        const candidate = parseUpdatedContactNameCandidate(rhs);
         if (candidate) return candidate;
       }
     }
@@ -2979,19 +2998,19 @@ function extractUpdatedContactNameFromSpeech(text) {
     .replace(/^(?:it's|it is)\s+/i, "")
     .trim();
 
-  let parsed = parseFullNameFromSpeech(stripped);
+  let parsed = parseUpdatedContactNameCandidate(stripped);
   if (parsed) return parsed;
 
   stripped = stripped
     .replace(/\b(?:yes|yeah|yep|like|to|change|it|that|contact|update|switch|please)\b/gi, " ")
     .replace(/\s+/g, " ")
     .trim();
-  parsed = parseFullNameFromSpeech(stripped);
+  parsed = parseUpdatedContactNameCandidate(stripped);
   if (parsed) return parsed;
 
   const direct = stripped.match(/^([A-Za-z'-]+(?:\s+[A-Za-z'-]+){0,2})\b/);
   if (direct) {
-    const candidate = parseFullNameFromSpeech(direct[1]);
+    const candidate = parseUpdatedContactNameCandidate(direct[1]);
     if (candidate) return candidate;
   }
 
@@ -8156,7 +8175,7 @@ async function handlePrompt(ws, caller, speech) {
       }
 
 
-      const parsedName = parseFullNameFromSpeech(text);
+      const parsedName = parseUpdatedContactNameCandidate(text);
       if (parsedName) {
         if (hasFullName(parsedName)) {
           caller.fullName = parsedName;
@@ -8186,7 +8205,7 @@ async function handlePrompt(ws, caller, speech) {
 
 
     case "capture_updated_contact_name": {
-      const parsedName = extractUpdatedContactNameFromSpeech(text) || parseFullNameFromSpeech(text);
+      const parsedName = extractUpdatedContactNameFromSpeech(text);
       if (!parsedName) {
         sendText(ws, "I'm sorry, I didn't quite catch the name. What name should I use instead?");
         return;
@@ -9498,6 +9517,34 @@ wss.on("connection", (ws, request) => {
 
 
 
+
+
+if (process.env.BLUE_CALLER_TEST_CONTACT_NAME === "1") {
+  const casesPath = path.join(__dirname, "contact_name_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load contact_name_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  let passed = 0;
+  for (const tc of cases) {
+    const got = extractUpdatedContactNameFromSpeech(tc.text);
+    const expect = tc.expect_name || "";
+    if (got === expect) {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    } else {
+      console.log(`FAIL  ${tc.name}`);
+      console.log(`  - expected name=${JSON.stringify(expect)} but got ${JSON.stringify(got)} for text: ${JSON.stringify(tc.text)}`);
+    }
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} contact-name cases.`);
+  process.exit(passed === cases.length ? 0 : 1);
+}
 
 
 if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
