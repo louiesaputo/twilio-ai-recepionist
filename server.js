@@ -134,7 +134,7 @@ const wss = new WebSocketServer({ noServer: true });
 
 const PORT = Number(process.env.PORT || 3000);
 const APP_VERSION = "CONVERSATIONRELAY-INLINE-ADDR-v1";
-const BIND_HOST = (process.env.BIND_HOST || process.env.HOST || "0.0.0.0").trim() || "0.0.0.0";
+const BIND_HOST = (process.env.BIND_HOST || "0.0.0.0").trim() || "0.0.0.0";
 
 
 
