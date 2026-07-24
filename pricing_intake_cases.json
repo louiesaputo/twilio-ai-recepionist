@@ -1,0 +1,68 @@
+[
+  {
+    "name": "standalone_pricing_ack_only",
+    "text": "How much does a service call cost?",
+    "caller": { "lastStep": "ask_issue" },
+    "expect": {
+      "issue": "",
+      "lastStep": "ask_issue"
+    }
+  },
+  {
+    "name": "mixed_pricing_keeps_issue",
+    "text": "I have a leaking water heater, how much does a service call cost?",
+    "caller": { "lastStep": "ask_issue" },
+    "expect": {
+      "issue_includes": ["leaking water heater"],
+      "lastStep_not": "ask_issue"
+    }
+  },
+  {
+    "name": "flooding_with_cost_aside_keeps_issue",
+    "text": "The repair cost is secondary, my basement is flooding",
+    "caller": { "lastStep": "ask_issue" },
+    "expect": {
+      "issue_includes": ["basement is flooding"],
+      "lastStep_not": "ask_issue"
+    }
+  },
+  {
+    "name": "mixed_pricing_keeps_address",
+    "text": "123 Main Street, Springfield, IL 62701, how much will this cost?",
+    "caller": {
+      "lastStep": "ask_address",
+      "fullName": "Jane Doe",
+      "firstName": "Jane",
+      "phone": "6145551212",
+      "callbackNumber": "6145551212",
+      "callbackConfirmed": true,
+      "issue": "leaking sink",
+      "issueSummary": "sink leak"
+    },
+    "expect": {
+      "address_includes": ["123 Main Street", "Springfield", "62701"],
+      "address_excludes": ["how much", "cost"],
+      "lastStep": "confirm_address"
+    }
+  },
+  {
+    "name": "final_question_mixed_pricing_keeps_extra_issue",
+    "text": "Also the toilet is running, how much does that cost?",
+    "caller": {
+      "lastStep": "final_question",
+      "fullName": "Jane Doe",
+      "firstName": "Jane",
+      "phone": "6145551212",
+      "callbackNumber": "6145551212",
+      "callbackConfirmed": true,
+      "address": "123 Main Street, Springfield, IL 62701",
+      "issue": "leaking sink",
+      "issueSummary": "sink leak",
+      "additionalIssues": []
+    },
+    "expect": {
+      "additionalIssues_includes": ["toilet is running"],
+      "lastStep": "final_question"
+    }
+  }
+]

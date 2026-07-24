@@ -3640,12 +3640,18 @@ function isDecliningTechnicianNotes(text) {
 
 
 function isPricingQuestion(text) {
-  const t = normalizedText(text);
-  return containsAny(t, [
-    "how much", "price", "pricing", "cost", "what is this going to cost",
-    "what's this going to cost", "what will this cost", "how much do you charge",
-    "what do you charge", "service fee", "trip charge", "diagnostic fee"
-  ]);
+  const t = normalizeIntentText(text);
+  if (!t) return false;
+  if (containsAny(t, [
+    "what is this going to cost", "whats this going to cost", "what will this cost",
+    "how much do you charge", "what do you charge",
+    "service fee", "trip charge", "diagnostic fee"
+  ])) return true;
+  if (/\bhow much\b/.test(t) && /\b(cost|charge|price|pricing|fee|dollar|pay|expensive)\b/.test(t)) return true;
+  if (/\bwhat(?:s| is| will be)?(?:\s+the)?\s+(?:price|pricing|cost)\b/.test(t)) return true;
+  if (/\b(?:price|pricing)\s+(?:for|of)\b/.test(t)) return true;
+  if (/^(?:price|pricing|cost)\??$/.test(t)) return true;
+  return false;
 }
 
 
@@ -3657,6 +3663,58 @@ function isPricingQuestion(text) {
 
 function pricingResponse() {
   return "That is a great question. Pricing can vary depending on the job, so someone from the office will go over that with you when they call.";
+}
+
+function stripPricingQuestionFromIntake(text) {
+  let s = cleanSpeechText(text || "");
+  if (!s) return "";
+
+  const trailingPatterns = [
+    /\s*(?:,|;|-|and|but)?\s*(?:and\s+)?(?:also\s+)?(?:i\s+(?:also\s+)?(?:want|need|wanna)\s+to\s+know\s+)?(?:how much\b.*|what(?:'s| is| will be)?(?:\s+the)?\s+(?:price|pricing|cost)\b.*|what(?:'s| is| will)\s+(?:this|it|that)(?:\s+\w+){0,6}\s+cost\b.*|(?:about\s+)?(?:the\s+)?(?:service fee|trip charge|diagnostic fee)\b.*)$/i,
+  ];
+  for (const pattern of trailingPatterns) {
+    s = s.replace(pattern, "").trim();
+  }
+
+  const leadingPatterns = [
+    /^(?:how much\b.*?[,.;:-]\s*)(.+)$/i,
+    /^(?:what(?:'s| is| will be)?(?:\s+the)?\s+(?:price|pricing|cost)\b.*?[,.;:-]\s*)(.+)$/i,
+  ];
+  for (const pattern of leadingPatterns) {
+    const match = s.match(pattern);
+    if (match && cleanSpeechText(match[1] || "")) {
+      s = cleanSpeechText(match[1]);
+      break;
+    }
+  }
+
+  return cleanSpeechText(s);
+}
+
+function looksLikeActionableIntakeText(text) {
+  const t = normalizedText(text || "");
+  if (!t) return false;
+  if (looksLikeIssueText(t)) return true;
+  if (containsAny(t, [
+    "repair", "fix", "broken", "not working", "service call", "appointment", "schedule",
+    "scheduling", "install", "installation", "replace", "replacement", "flood", "flooding",
+    "compressor", "basement", "urgent", "emergency"
+  ])) return true;
+  if (extractTenDigitUsPhoneFromUtterance(t)) return true;
+  if (analyzeUsServiceAddressCompleteness(extractBestDispatchAddressCandidate(t)).ok) return true;
+  if (/\b(?:address|unit|apt|apartment|suite|gate code|zip|phone|number|my name is|this is|i am|i'm)\b/i.test(t)) {
+    return true;
+  }
+  return false;
+}
+
+function shouldAnswerPricingQuestionOnly(text) {
+  if (!isPricingQuestion(text)) return false;
+  const stripped = stripPricingQuestionFromIntake(text || "");
+  if (normalizedText(stripped) !== normalizedText(text || "") && looksLikeActionableIntakeText(stripped)) {
+    return false;
+  }
+  return !looksLikeActionableIntakeText(text || "");
 }
 
 function isHumanAgentRequest(text) {
@@ -7057,7 +7115,7 @@ function applyFlexibleContactHarvest(ws, caller, text) {
 }
 
 async function handlePrompt(ws, caller, speech) {
-  const text = cleanSpeechText(speech || "");
+  let text = cleanSpeechText(speech || "");
   console.log("[PROMPT RECEIVED]", JSON.stringify({ step: caller.lastStep, text }));
   if (!text) {
     sendText(ws, "I'm sorry, I didn't catch that. Could you say that again?");
@@ -7079,8 +7137,13 @@ async function handlePrompt(ws, caller, speech) {
   }
 
   if (isPricingQuestion(text)) {
-    sendText(ws, pricingResponse());
-    return;
+    if (shouldAnswerPricingQuestionOnly(text)) {
+      const resume = buildResumePromptForCurrentStep(caller);
+      sendText(ws, resume ? `${pricingResponse()} ${resume}` : pricingResponse());
+      return;
+    }
+    const intakeText = stripPricingQuestionFromIntake(text);
+    if (intakeText) text = intakeText;
   }
 
   if (isHumanAgentRequest(text) || isAiIdentityQuestion(text)) {
@@ -9025,8 +9088,12 @@ async function handlePrompt(ws, caller, speech) {
 
     case "final_question": {
       if (isPricingQuestion(text)) {
-        sendText(ws, `${pricingResponse()} ${buildFinalSubmissionPrompt(caller)}`);
-        return;
+        if (shouldAnswerPricingQuestionOnly(text)) {
+          sendText(ws, `${pricingResponse()} ${buildFinalSubmissionPrompt(caller)}`);
+          return;
+        }
+        const intakeText = stripPricingQuestionFromIntake(text);
+        if (intakeText) text = intakeText;
       }
 
 
@@ -9500,7 +9567,100 @@ wss.on("connection", (ws, request) => {
 
 
 
-if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
+
+async function runPricingIntakePromptCases() {
+  const casesPath = path.join(__dirname, "pricing_intake_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load pricing_intake_cases.json:", err.message);
+    return 1;
+  }
+
+  let passed = 0;
+  for (let i = 0; i < cases.length; i += 1) {
+    const tc = cases[i];
+    const sessionKey = `pricing-intake-case-${i}`;
+    delete callerStore[sessionKey];
+    const caller = getOrCreateCaller(sessionKey);
+    Object.assign(caller, tc.caller || {});
+
+    const sent = [];
+    const ws = {
+      readyState: 1,
+      sessionKey,
+      send(payload) {
+        sent.push(payload);
+      },
+    };
+
+    try {
+      await handlePrompt(ws, caller, tc.text || "");
+    } catch (err) {
+      console.log(`FAIL  ${tc.name}`);
+      console.log(`  - handlePrompt threw: ${err && err.message}`);
+      continue;
+    }
+
+    const failures = [];
+    const expect = tc.expect || {};
+    for (const [field, value] of Object.entries(expect)) {
+      if (field.endsWith("_includes")) {
+        const callerField = field.slice(0, -"_includes".length);
+        const actualValue = caller[callerField];
+        const actual = Array.isArray(actualValue)
+          ? actualValue.join(" | ").toLowerCase()
+          : String(actualValue || "").toLowerCase();
+        for (const fragment of value || []) {
+          if (!actual.includes(String(fragment).toLowerCase())) {
+            failures.push(`${callerField} should include ${JSON.stringify(fragment)} but got ${JSON.stringify(actualValue || "")}`);
+          }
+        }
+      } else if (field.endsWith("_excludes")) {
+        const callerField = field.slice(0, -"_excludes".length);
+        const actualValue = caller[callerField];
+        const actual = Array.isArray(actualValue)
+          ? actualValue.join(" | ").toLowerCase()
+          : String(actualValue || "").toLowerCase();
+        for (const fragment of value || []) {
+          if (actual.includes(String(fragment).toLowerCase())) {
+            failures.push(`${callerField} should not include ${JSON.stringify(fragment)} but got ${JSON.stringify(actualValue || "")}`);
+          }
+        }
+      } else if (field.endsWith("_not")) {
+        const callerField = field.slice(0, -"_not".length);
+        if (caller[callerField] === value) {
+          failures.push(`${callerField} should not be ${JSON.stringify(value)}`);
+        }
+      } else if (caller[field] !== value) {
+        failures.push(`${field} expected ${JSON.stringify(value)} but got ${JSON.stringify(caller[field])}`);
+      }
+    }
+
+    if (failures.length === 0) {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    } else {
+      console.log(`FAIL  ${tc.name}`);
+      for (const failure of failures) console.log(`  - ${failure}`);
+    }
+
+    delete callerStore[sessionKey];
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} pricing intake cases.`);
+  return passed === cases.length ? 0 : 1;
+}
+
+if (process.env.BLUE_CALLER_TEST_PRICING_INTAKE === "1") {
+  runPricingIntakePromptCases()
+    .then((code) => process.exit(code))
+    .catch((err) => {
+      console.error("pricing intake regression failed:", err);
+      process.exit(1);
+    });
+} else if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   const casesPath = path.join(__dirname, "wrap_up_cases.json");
   let cases;
   try {
