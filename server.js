@@ -3711,6 +3711,8 @@ function looksLikeActionableIntakeText(text) {
 function shouldAnswerPricingQuestionOnly(text) {
   if (!isPricingQuestion(text)) return false;
   const stripped = stripPricingQuestionFromIntake(text || "");
+  // Whole utterance was a price ask (including "how much does a service call cost?").
+  if (!cleanSpeechText(stripped)) return true;
   if (normalizedText(stripped) !== normalizedText(text || "") && looksLikeActionableIntakeText(stripped)) {
     return false;
   }
@@ -9685,8 +9687,8 @@ if (process.env.BLUE_CALLER_TEST_PRICING_INTAKE === "1") {
 
   console.log(`\nPassed ${passed} of ${cases.length} wrap-up cases.`);
   process.exit(passed === cases.length ? 0 : 1);
+} else {
+  server.listen(PORT, BIND_HOST, () => {
+    console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
+  });
 }
-
-server.listen(PORT, BIND_HOST, () => {
-  console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
-});
