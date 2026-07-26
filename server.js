@@ -2367,6 +2367,27 @@ const SPOKEN_PHONE_DIGIT_MAP = {
 
 
 /**
+ * Strip spoken/written extension tails so "404-555-1212 extension 9" does not
+ * concatenate into 11+ digits and then get silently truncated to a wrong NANP number.
+ */
+function stripPhoneExtensionClause(raw) {
+  let s = String(raw || "");
+  if (!s) return "";
+  for (let guard = 0; guard < 4; guard++) {
+    const next = s
+      .replace(/\b(?:extension|ext\.?)\s*[:#-]?\s*\d{1,6}\b/gi, " ")
+      .replace(/\b(?:extension|ext\.?)\b/gi, " ")
+      .replace(/(?:^|[^\w])x\s*[:#-]?\s*\d{1,6}\b/gi, " ")
+      .replace(/#\s*\d{1,6}\b/g, " ")
+      .replace(/\s{2,}/g, " ")
+      .trim();
+    if (next === s) break;
+    s = next;
+  }
+  return s;
+}
+
+/**
  * When the caller mistakenly starts with their address during phone capture and then clarifies ("sorry, I meant…"),
  * keep the corrective tail only so numeric runs are not blindly concatenated across the whole utterance.
  */
@@ -2555,10 +2576,10 @@ function canonicalNanpDigitRunFromSegment(seg) {
 }
 
 function extractPhoneDigits(text) {
-  const raw = cleanForSpeech(text || "");
+  const raw = stripPhoneExtensionClause(cleanForSpeech(text || ""));
   if (!raw) return "";
 
-  const focused = extractPhoneCorrectionFocusTail(raw);
+  const focused = stripPhoneExtensionClause(extractPhoneCorrectionFocusTail(raw));
   const segments = [];
   const seen = new Set();
   const pushSeg = (s) => {
@@ -6802,11 +6823,13 @@ function applyExtractedName(caller, fullName, firstName = "") {
 
 
 function normalizePhoneForStorage(value) {
-  const raw = cleanForSpeech(value || "");
+  const raw = stripPhoneExtensionClause(cleanForSpeech(value || ""));
   let d = extractPhoneDigits(raw || "");
   const brute = raw.replace(/\D/g, "");
 
-  const correctedTail = normalizedText(extractPhoneCorrectionFocusTail(raw || "")) !== normalizedText(raw || "");
+  const correctedTail =
+    normalizedText(stripPhoneExtensionClause(extractPhoneCorrectionFocusTail(raw || ""))) !==
+    normalizedText(raw || "");
 
   if (!d && brute.length >= 7 && brute.length <= 11) {
     if (!(brute.length > 10 && looksLexicallyLikeAddressFragmentNearDigits(raw))) {
@@ -6823,7 +6846,9 @@ function normalizePhoneForStorage(value) {
   if (!d) return cleanForSpeech(raw);
 
   if (d.length === 11 && d.startsWith("1")) return d.slice(1);
-  if (d.length > 10) return d.slice(-10);
+  if (d.length === 10) return d;
+  // Do not silently left-truncate 11-digit non-NANP runs (often phone + extension digits).
+  if (d.length >= 12 && d.length <= 15) return d.slice(-10);
 
   return d;
 }
@@ -9524,6 +9549,33 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   }
 
   console.log(`\nPassed ${passed} of ${cases.length} wrap-up cases.`);
+  process.exit(passed === cases.length ? 0 : 1);
+}
+
+if (process.env.BLUE_CALLER_TEST_PHONE === "1") {
+  const casesPath = path.join(__dirname, "phone_extension_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load phone_extension_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  let passed = 0;
+  for (const tc of cases) {
+    const got = normalizePhoneForStorage(tc.text);
+    const expect = String(tc.expect_stored || "");
+    if (got === expect) {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    } else {
+      console.log(`FAIL  ${tc.name}`);
+      console.log(`  - expected stored=${JSON.stringify(expect)} but got ${JSON.stringify(got)} for text: ${JSON.stringify(tc.text)}`);
+    }
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} phone-extension cases.`);
   process.exit(passed === cases.length ? 0 : 1);
 }
 

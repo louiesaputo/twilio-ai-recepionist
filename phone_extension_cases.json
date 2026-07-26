@@ -1,0 +1,47 @@
+[
+  {
+    "name": "plain_ten_digit",
+    "text": "404-555-1212",
+    "expect_stored": "4045551212"
+  },
+  {
+    "name": "leading_country_code",
+    "text": "1-404-555-1212",
+    "expect_stored": "4045551212"
+  },
+  {
+    "name": "extension_word_single_digit",
+    "text": "404-555-1212 extension 9",
+    "expect_stored": "4045551212"
+  },
+  {
+    "name": "ext_abbreviation",
+    "text": "404-555-1212 ext 9",
+    "expect_stored": "4045551212"
+  },
+  {
+    "name": "extension_two_digits_with_lead_in",
+    "text": "use 404-555-1212 extension 12",
+    "expect_stored": "4045551212"
+  },
+  {
+    "name": "ext_with_spaces_in_number",
+    "text": "my number is 404 555 1212 ext 45",
+    "expect_stored": "4045551212"
+  },
+  {
+    "name": "x_suffix_two_digits",
+    "text": "404-555-1212 x 99",
+    "expect_stored": "4045551212"
+  },
+  {
+    "name": "compact_with_x_suffix",
+    "text": "4045551212 x9",
+    "expect_stored": "4045551212"
+  },
+  {
+    "name": "extension_three_digits_compact",
+    "text": "call me at 4045551212 extension 123",
+    "expect_stored": "4045551212"
+  }
+]
