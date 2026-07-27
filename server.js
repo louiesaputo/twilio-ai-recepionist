@@ -6584,6 +6584,100 @@ function isScheduleOfferAcceptance(text) {
   ]) || isAffirmative(t);
 }
 
+/** Strip schedule-acceptance cues so mixed turns can keep emergency/access details. */
+function extractExtraDetailAfterScheduleAcceptance(text) {
+  let s = cleanForSpeech(text || "");
+  if (!s) return "";
+
+  for (let guard = 0; guard < 12; guard++) {
+    const next = s
+      .replace(/^(yes|yeah|yep|yup|sure|okay|ok|alright|absolutely|perfect|great|please)\b[\s,.-]*/i, "")
+      .replace(/^(that(?:'s|s)?\s+(?:ll|will|should)?\s*works?(?:\s+for\s+me)?|thatll\s+works?(?:\s+for\s+me)?|works\s+for\s+me)\b[\s,.-]*/i, "")
+      .replace(/^(that\s+(?:is|s)?\s*(?:fine|okay|ok|good|great)|sounds\s+(?:good|great|fine|okay|ok))\b[\s,.-]*/i, "")
+      .replace(/^(book\s+it|schedule\s+it|go\s+ahead(?:\s+and\s+(?:book|schedule)\s+it)?)\b[\s,.-]*/i, "")
+      .replace(/^(thanks|thank\s+you|thx|appreciate\s+it)\b[\s,.-]*/i, "")
+      .replace(/^(but|and|also|though|however|plus)\b[\s,.-]*/i, "")
+      .trim();
+    if (next === s) break;
+    s = next;
+  }
+
+  s = s.replace(/^[,.:;\-]+\s*/, "").trim();
+  if (!s) return "";
+
+  const politeOnly = /^(thanks|thank you|thx|please|appreciate it|thanks so much|thank you so much)\.?$/i;
+  if (politeOnly.test(s)) return "";
+
+  // Leftover that is still only an acceptance cue is not a side detail.
+  if (isScheduleOfferAcceptance(s) && !isHardEmergency(s) && !looksLikeSubstantiveTechNoteIntent(s) && normalizeIntentText(s).split(/\s+/).length <= 5) {
+    return "";
+  }
+
+  const nt = normalizeIntentText(s);
+  if (!nt || nt.length < 4) return "";
+  return s;
+}
+
+/**
+ * Preserve side details disclosed while accepting an offered callback slot.
+ * Escalates hard emergencies without wiping the booked appointment fields.
+ */
+function captureDetailsDisclosedDuringScheduleAcceptance(caller, text) {
+  if (!caller) return false;
+  const extra = extractExtraDetailAfterScheduleAcceptance(text);
+  const emergencyInTurn = isHardEmergency(text) || (extra && isHardEmergency(extra));
+  if (!extra && !emergencyInTurn) return false;
+
+  const detailText = extra || cleanForSpeech(text || "");
+  if (detailText) appendAdditionalIssue(caller, detailText);
+
+  if (emergencyInTurn) {
+    const keepStatus = caller.status;
+    const keepDate = caller.appointmentDate;
+    const keepTime = caller.appointmentTime;
+    const keepConfirmed = caller.calendarSlotConfirmed === true;
+    markEmergency(caller);
+    if (keepDate) caller.appointmentDate = keepDate;
+    if (keepTime) caller.appointmentTime = keepTime;
+    caller.calendarSlotConfirmed = keepConfirmed;
+    if (keepStatus === "scheduled" || keepStatus === "scheduled_pending_confirmation") {
+      caller.status = keepStatus;
+    }
+  } else if (extra && isUrgentNonEmergencyRequest(extra)) {
+    const keepStatus = caller.status;
+    const keepDate = caller.appointmentDate;
+    const keepTime = caller.appointmentTime;
+    const keepConfirmed = caller.calendarSlotConfirmed === true;
+    markUrgent(caller);
+    if (keepDate) caller.appointmentDate = keepDate;
+    if (keepTime) caller.appointmentTime = keepTime;
+    caller.calendarSlotConfirmed = keepConfirmed;
+    if (keepStatus === "scheduled" || keepStatus === "scheduled_pending_confirmation") {
+      caller.status = keepStatus;
+    }
+  }
+
+  return true;
+}
+
+function acceptPendingOfferedCallbackSlot(ws, caller, text) {
+  caller.appointmentDate = caller.pendingOfferedDate;
+  caller.appointmentTime = caller.pendingOfferedTime;
+  caller.status = "scheduled";
+  caller.calendarSlotConfirmed = true;
+  captureDetailsDisclosedDuringScheduleAcceptance(caller, text);
+  caller.lastStep = "ask_notes";
+  const notesPrompt = buildTechnicianNotesPrompt(caller);
+  if (caller.emergencyAlert) {
+    sendText(
+      ws,
+      `I've marked this as an emergency and kept your callback for ${caller.appointmentDate} at ${caller.appointmentTime}. ${notesPrompt}`
+    );
+    return;
+  }
+  sendText(ws, notesPrompt);
+}
+
 
 
 
@@ -8650,12 +8744,7 @@ async function handlePrompt(ws, caller, speech) {
           sendText(ws, buildLateDayFallbackPrompt(caller));
           return;
         }
-        caller.appointmentDate = caller.pendingOfferedDate;
-        caller.appointmentTime = caller.pendingOfferedTime;
-        caller.status = "scheduled";
-        caller.calendarSlotConfirmed = true;
-        caller.lastStep = "ask_notes";
-        sendText(ws, buildTechnicianNotesPrompt(caller));
+        acceptPendingOfferedCallbackSlot(ws, caller, text);
         return;
       }
 
@@ -8698,12 +8787,7 @@ async function handlePrompt(ws, caller, speech) {
               sendText(ws, buildLateDayFallbackPrompt(caller));
               return;
             }
-            caller.appointmentDate = caller.pendingOfferedDate;
-            caller.appointmentTime = caller.pendingOfferedTime;
-            caller.status = "scheduled";
-            caller.calendarSlotConfirmed = true;
-            caller.lastStep = "ask_notes";
-            sendText(ws, buildTechnicianNotesPrompt(caller));
+            acceptPendingOfferedCallbackSlot(ws, caller, text);
             return;
           }
 
@@ -8796,12 +8880,7 @@ async function handlePrompt(ws, caller, speech) {
 
 
       if (isAffirmative(text)) {
-        caller.appointmentDate = caller.pendingOfferedDate;
-        caller.appointmentTime = caller.pendingOfferedTime;
-        caller.status = "scheduled";
-        caller.calendarSlotConfirmed = true;
-        caller.lastStep = "ask_notes";
-        sendText(ws, buildTechnicianNotesPrompt(caller));
+        acceptPendingOfferedCallbackSlot(ws, caller, text);
         return;
       }
 
@@ -9524,6 +9603,74 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   }
 
   console.log(`\nPassed ${passed} of ${cases.length} wrap-up cases.`);
+  process.exit(passed === cases.length ? 0 : 1);
+}
+
+if (process.env.BLUE_CALLER_TEST_SCHEDULE_ACCEPTANCE === "1") {
+  const casesPath = path.join(__dirname, "schedule_acceptance_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load schedule_acceptance_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  let passed = 0;
+  for (const tc of cases) {
+    const caller = {
+      pendingOfferedDate: "Tuesday, July 28",
+      pendingOfferedTime: "2:00 PM",
+      appointmentDate: "",
+      appointmentTime: "",
+      status: "new_lead",
+      calendarSlotConfirmed: false,
+      emergencyAlert: false,
+      urgency: "normal",
+      leadType: "service",
+      additionalIssues: [],
+      notes: "",
+      lastStep: "confirm_first_available",
+      alexEmotionalTone: "neutral",
+      promptIndexes: Object.create(null),
+    };
+
+    caller.appointmentDate = caller.pendingOfferedDate;
+    caller.appointmentTime = caller.pendingOfferedTime;
+    caller.status = "scheduled";
+    caller.calendarSlotConfirmed = true;
+    captureDetailsDisclosedDuringScheduleAcceptance(caller, tc.text);
+
+    const expectAccept = tc.expect_accept !== false;
+    const gotAccept = isScheduleOfferAcceptance(tc.text);
+    const expectEmergency = Boolean(tc.expect_emergency);
+    const gotEmergency = caller.emergencyAlert === true && caller.leadType === "emergency";
+    const expectDetail = Boolean(tc.expect_additional_issue);
+    const gotDetail = Array.isArray(caller.additionalIssues) && caller.additionalIssues.length > 0;
+    const keptSchedule =
+      caller.status === "scheduled" &&
+      caller.appointmentDate === "Tuesday, July 28" &&
+      caller.appointmentTime === "2:00 PM";
+
+    const ok =
+      gotAccept === expectAccept &&
+      gotEmergency === expectEmergency &&
+      gotDetail === expectDetail &&
+      keptSchedule;
+
+    if (ok) {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    } else {
+      console.log(`FAIL  ${tc.name}`);
+      console.log(
+        `  - accept=${gotAccept}/${expectAccept} emergency=${gotEmergency}/${expectEmergency} detail=${gotDetail}/${expectDetail} keptSchedule=${keptSchedule}`
+      );
+      console.log(`  - additionalIssues=${JSON.stringify(caller.additionalIssues)}`);
+    }
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} schedule-acceptance cases.`);
   process.exit(passed === cases.length ? 0 : 1);
 }
 

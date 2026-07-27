@@ -1,0 +1,37 @@
+[
+  {
+    "name": "pure_yes_that_works",
+    "text": "Yes, that works",
+    "expect_accept": true,
+    "expect_emergency": false,
+    "expect_additional_issue": false
+  },
+  {
+    "name": "pure_works_for_me_thanks",
+    "text": "works for me thanks",
+    "expect_accept": true,
+    "expect_emergency": false,
+    "expect_additional_issue": false
+  },
+  {
+    "name": "mixed_pouring_ceiling_emergency",
+    "text": "Yes, that works, but now water is pouring through the ceiling and I need emergency help",
+    "expect_accept": true,
+    "expect_emergency": true,
+    "expect_additional_issue": true
+  },
+  {
+    "name": "mixed_basement_flooding",
+    "text": "sure that works, also the basement is flooding",
+    "expect_accept": true,
+    "expect_emergency": true,
+    "expect_additional_issue": true
+  },
+  {
+    "name": "mixed_gate_code_detail",
+    "text": "okay that works, gate code is 4455",
+    "expect_accept": true,
+    "expect_emergency": false,
+    "expect_additional_issue": true
+  }
+]
