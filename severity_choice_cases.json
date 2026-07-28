@@ -1,0 +1,44 @@
+[
+  {
+    "name": "appliance_no_but_gas_leak_escalates",
+    "step": "appliance_priority_choice",
+    "text": "No, but there is a gas leak.",
+    "expect_outcome": "emergency",
+    "expect_additional_issue": true
+  },
+  {
+    "name": "refrigerator_no_but_pouring_water_escalates",
+    "step": "refrigerator_emergency_choice",
+    "text": "No, but water is pouring everywhere.",
+    "expect_outcome": "emergency",
+    "expect_additional_issue": true
+  },
+  {
+    "name": "appliance_urgent_with_gas_leak_escalates",
+    "step": "appliance_priority_choice",
+    "text": "It is urgent, there is a gas leak",
+    "expect_outcome": "emergency",
+    "expect_additional_issue": true
+  },
+  {
+    "name": "appliance_plain_no_stays_standard",
+    "step": "appliance_priority_choice",
+    "text": "No",
+    "expect_outcome": "standard",
+    "expect_additional_issue": false
+  },
+  {
+    "name": "appliance_yes_marks_emergency",
+    "step": "appliance_priority_choice",
+    "text": "Yes",
+    "expect_outcome": "emergency",
+    "expect_additional_issue": false
+  },
+  {
+    "name": "hazard_denial_no_gas_leak_does_not_escalate",
+    "step": "appliance_priority_choice",
+    "text": "no gas leak",
+    "expect_outcome": "standard",
+    "expect_additional_issue": false
+  }
+]

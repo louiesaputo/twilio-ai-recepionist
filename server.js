@@ -3453,6 +3453,50 @@ function markUrgent(caller) {
   caller.status = "new_lead";
 }
 
+function isHardEmergencyHazardDenial(text) {
+  const t = normalizeIntentText(text);
+  if (!t) return false;
+  // Bare denials of the hazard itself ("no gas leak") should not escalate.
+  return /^(?:there\s+is\s+)?(?:no|not\s+a)\s+(?:gas\s+leak|flooding|flooded|burst(?:\s+pipe)?|sewer|sewage)\b/.test(t)
+    || /^(?:it\s+)?(?:is\s+)?not\s+(?:a\s+)?(?:gas\s+leak|flooding|burst(?:\s+pipe)?)\b/.test(t);
+}
+
+/**
+ * During refrigerator/appliance severity choice, callers often refuse the prompt
+ * wording while disclosing a new hard emergency ("No, but there is a gas leak").
+ * Capture that detail and escalate before polarity/urgent matchers run.
+ */
+function captureHardEmergencyDisclosedDuringSeverityChoice(caller, text) {
+  if (!caller || !isHardEmergency(text) || isHardEmergencyHazardDenial(text)) return false;
+  const detail = cleanForSpeech(text || "");
+  if (detail) appendAdditionalIssue(caller, detail);
+  markEmergency(caller);
+  return true;
+}
+
+function advanceAfterSeverityMarked(ws, caller, kind) {
+  const nextStep = caller.fullName ? (hasFullName(caller.fullName) ? resolvePhoneIntakeStep(caller) : "ask_last_name") : "ask_name";
+  const spellingPrompt = caller.fullName ? maybeQueueFirstNameSpelling(caller, nextStep) : "";
+  if (spellingPrompt) {
+    sendText(ws, spellingPrompt);
+    return;
+  }
+  caller.lastStep = nextStep;
+  if (kind === "emergency") {
+    sendText(ws, buildEmergencyIntakePromptAfterPriorAck(caller));
+    return;
+  }
+  if (kind === "urgent") {
+    sendText(ws, buildUrgentIntakePromptAfterPriorAck(caller));
+    return;
+  }
+  if (kind === "standard_appliance") {
+    sendText(ws, buildStandardIntakePromptAfterCookingPriorityAck(caller));
+    return;
+  }
+  sendText(ws, buildStandardIntakePromptAfterPriorSeverityAck(caller));
+}
+
 function buildUrgentIntakePrompt(caller) {
   const acknowledgement = buildIssueAcknowledgement(caller);
   const withName = caller.firstName ? `${caller.firstName}, ` : "";
@@ -6865,6 +6909,9 @@ function sendAfterAddressConfirmed(ws, caller) {
   }
   if (caller.emergencyAlert) {
     caller.lastStep = "ask_notes";
+    // Submit the completed emergency lead before optional notes so a hangup
+    // at this step cannot leave the emergency only in volatile memory.
+    queuePrimaryLeadAndBooking(caller);
     sendText(ws, buildTechnicianNotesPrompt(caller));
     return;
   }
@@ -7717,16 +7764,14 @@ async function handlePrompt(ws, caller, speech) {
 
 
     case "refrigerator_emergency_choice": {
+      if (captureHardEmergencyDisclosedDuringSeverityChoice(caller, text)) {
+        advanceAfterSeverityMarked(ws, caller, "emergency");
+        return;
+      }
+
       if (isAffirmative(text) || containsAny(normalizeIntentText(text), ["emergency", "mark it as an emergency", "mark this as an emergency"])) {
         markEmergency(caller);
-        const nextStep = caller.fullName ? (hasFullName(caller.fullName) ? resolvePhoneIntakeStep(caller) : "ask_last_name") : "ask_name";
-        const spellingPrompt = caller.fullName ? maybeQueueFirstNameSpelling(caller, nextStep) : "";
-        if (spellingPrompt) {
-          sendText(ws, spellingPrompt);
-          return;
-        }
-        caller.lastStep = nextStep;
-        sendText(ws, buildEmergencyIntakePromptAfterPriorAck(caller));
+        advanceAfterSeverityMarked(ws, caller, "emergency");
         return;
       }
 
@@ -7738,27 +7783,13 @@ async function handlePrompt(ws, caller, speech) {
 
       if (wantsStandardAfterEmergencyQuestion && !wantsUrgentNotEmergency) {
         markStandardService(caller);
-        const nextStep = caller.fullName ? (hasFullName(caller.fullName) ? resolvePhoneIntakeStep(caller) : "ask_last_name") : "ask_name";
-        const spellingPrompt = caller.fullName ? maybeQueueFirstNameSpelling(caller, nextStep) : "";
-        if (spellingPrompt) {
-          sendText(ws, spellingPrompt);
-          return;
-        }
-        caller.lastStep = nextStep;
-        sendText(ws, buildStandardIntakePromptAfterPriorSeverityAck(caller));
+        advanceAfterSeverityMarked(ws, caller, "standard");
         return;
       }
 
       if (wantsUrgentNotEmergency) {
         markUrgent(caller);
-        const nextStep = caller.fullName ? (hasFullName(caller.fullName) ? resolvePhoneIntakeStep(caller) : "ask_last_name") : "ask_name";
-        const spellingPrompt = caller.fullName ? maybeQueueFirstNameSpelling(caller, nextStep) : "";
-        if (spellingPrompt) {
-          sendText(ws, spellingPrompt);
-          return;
-        }
-        caller.lastStep = nextStep;
-        sendText(ws, buildUrgentIntakePromptAfterPriorAck(caller));
+        advanceAfterSeverityMarked(ws, caller, "urgent");
         return;
       }
 
@@ -7768,57 +7799,34 @@ async function handlePrompt(ws, caller, speech) {
 
 
     case "appliance_priority_choice": {
+      if (captureHardEmergencyDisclosedDuringSeverityChoice(caller, text)) {
+        advanceAfterSeverityMarked(ws, caller, "emergency");
+        return;
+      }
+
       const ntCook = normalizeIntentText(text);
 
       if (containsAny(ntCook, ["emergency", "mark it as an emergency", "mark this as an emergency"])) {
         markEmergency(caller);
-        const nextStep = caller.fullName ? (hasFullName(caller.fullName) ? resolvePhoneIntakeStep(caller) : "ask_last_name") : "ask_name";
-        const spellingPrompt = caller.fullName ? maybeQueueFirstNameSpelling(caller, nextStep) : "";
-        if (spellingPrompt) {
-          sendText(ws, spellingPrompt);
-          return;
-        }
-        caller.lastStep = nextStep;
-        sendText(ws, buildEmergencyIntakePromptAfterPriorAck(caller));
+        advanceAfterSeverityMarked(ws, caller, "emergency");
         return;
       }
 
       if (isNegative(text) || containsAny(ntCook, ["normal", "standard", "regular service"])) {
         markStandardService(caller);
-        const nextStep = caller.fullName ? (hasFullName(caller.fullName) ? resolvePhoneIntakeStep(caller) : "ask_last_name") : "ask_name";
-        const spellingPrompt = caller.fullName ? maybeQueueFirstNameSpelling(caller, nextStep) : "";
-        if (spellingPrompt) {
-          sendText(ws, spellingPrompt);
-          return;
-        }
-        caller.lastStep = nextStep;
-        sendText(ws, buildStandardIntakePromptAfterCookingPriorityAck(caller));
+        advanceAfterSeverityMarked(ws, caller, "standard_appliance");
         return;
       }
 
       if (isUrgentSelection(text)) {
         markUrgent(caller);
-        const nextStep = caller.fullName ? (hasFullName(caller.fullName) ? resolvePhoneIntakeStep(caller) : "ask_last_name") : "ask_name";
-        const spellingPrompt = caller.fullName ? maybeQueueFirstNameSpelling(caller, nextStep) : "";
-        if (spellingPrompt) {
-          sendText(ws, spellingPrompt);
-          return;
-        }
-        caller.lastStep = nextStep;
-        sendText(ws, buildUrgentIntakePromptAfterPriorAck(caller));
+        advanceAfterSeverityMarked(ws, caller, "urgent");
         return;
       }
 
       if (isAffirmative(text)) {
         markEmergency(caller);
-        const nextStep = caller.fullName ? (hasFullName(caller.fullName) ? resolvePhoneIntakeStep(caller) : "ask_last_name") : "ask_name";
-        const spellingPrompt = caller.fullName ? maybeQueueFirstNameSpelling(caller, nextStep) : "";
-        if (spellingPrompt) {
-          sendText(ws, spellingPrompt);
-          return;
-        }
-        caller.lastStep = nextStep;
-        sendText(ws, buildEmergencyIntakePromptAfterPriorAck(caller));
+        advanceAfterSeverityMarked(ws, caller, "emergency");
         return;
       }
 
@@ -8844,7 +8852,9 @@ async function handlePrompt(ws, caller, speech) {
 
 
 
-      queuePrimaryLeadAndBooking(caller);
+      // If the lead was already submitted (e.g. emergency after address confirm),
+      // force a resubmit when the caller adds optional technician notes.
+      queuePrimaryLeadAndBooking(caller, { forceLead: hadNotes && (caller.makeSent || caller.makeSending) });
 
 
 
@@ -9527,6 +9537,187 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   process.exit(passed === cases.length ? 0 : 1);
 }
 
-server.listen(PORT, BIND_HOST, () => {
-  console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
-});
+function classifySeverityChoiceForTest(text, step) {
+  const caller = {
+    emergencyAlert: false,
+    urgency: "normal",
+    leadType: "service",
+    status: "new_lead",
+    additionalIssues: [],
+    notes: "",
+  };
+
+  if (captureHardEmergencyDisclosedDuringSeverityChoice(caller, text)) {
+    return {
+      outcome: "emergency",
+      additionalIssue: Array.isArray(caller.additionalIssues) && caller.additionalIssues.length > 0,
+      leadType: caller.leadType,
+      urgency: caller.urgency,
+      emergencyAlert: caller.emergencyAlert,
+    };
+  }
+
+  if (step === "refrigerator_emergency_choice") {
+    if (isAffirmative(text) || containsAny(normalizeIntentText(text), ["emergency", "mark it as an emergency", "mark this as an emergency"])) {
+      markEmergency(caller);
+      return { outcome: "emergency", additionalIssue: false, leadType: caller.leadType, urgency: caller.urgency, emergencyAlert: caller.emergencyAlert };
+    }
+    const nt = normalizeIntentText(text);
+    const wantsStandardAfterEmergencyQuestion =
+      isNegative(text) ||
+      containsAny(nt, ["standard service", "normal service", "regular service", "not an emergency", "no emergency"]);
+    const wantsUrgentNotEmergency = isUrgentSelection(text);
+    if (wantsStandardAfterEmergencyQuestion && !wantsUrgentNotEmergency) {
+      markStandardService(caller);
+      return { outcome: "standard", additionalIssue: false, leadType: caller.leadType, urgency: caller.urgency, emergencyAlert: caller.emergencyAlert };
+    }
+    if (wantsUrgentNotEmergency) {
+      markUrgent(caller);
+      return { outcome: "urgent", additionalIssue: false, leadType: caller.leadType, urgency: caller.urgency, emergencyAlert: caller.emergencyAlert };
+    }
+    return { outcome: "reprompt", additionalIssue: false, leadType: caller.leadType, urgency: caller.urgency, emergencyAlert: caller.emergencyAlert };
+  }
+
+  const ntCook = normalizeIntentText(text);
+  if (containsAny(ntCook, ["emergency", "mark it as an emergency", "mark this as an emergency"])) {
+    markEmergency(caller);
+    return { outcome: "emergency", additionalIssue: false, leadType: caller.leadType, urgency: caller.urgency, emergencyAlert: caller.emergencyAlert };
+  }
+  if (isNegative(text) || containsAny(ntCook, ["normal", "standard", "regular service"])) {
+    markStandardService(caller);
+    return { outcome: "standard", additionalIssue: false, leadType: caller.leadType, urgency: caller.urgency, emergencyAlert: caller.emergencyAlert };
+  }
+  if (isUrgentSelection(text)) {
+    markUrgent(caller);
+    return { outcome: "urgent", additionalIssue: false, leadType: caller.leadType, urgency: caller.urgency, emergencyAlert: caller.emergencyAlert };
+  }
+  if (isAffirmative(text)) {
+    markEmergency(caller);
+    return { outcome: "emergency", additionalIssue: false, leadType: caller.leadType, urgency: caller.urgency, emergencyAlert: caller.emergencyAlert };
+  }
+  return { outcome: "reprompt", additionalIssue: false, leadType: caller.leadType, urgency: caller.urgency, emergencyAlert: caller.emergencyAlert };
+}
+
+if (process.env.BLUE_CALLER_TEST_SEVERITY_CHOICE === "1") {
+  const casesPath = path.join(__dirname, "severity_choice_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load severity_choice_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  let passed = 0;
+  for (const tc of cases) {
+    const got = classifySeverityChoiceForTest(tc.text, tc.step || "appliance_priority_choice");
+    const expectOutcome = String(tc.expect_outcome || "");
+    const expectDetail = Boolean(tc.expect_additional_issue);
+    const ok = got.outcome === expectOutcome && got.additionalIssue === expectDetail;
+    if (ok) {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    } else {
+      console.log(`FAIL  ${tc.name}`);
+      console.log(
+        `  - outcome=${got.outcome}/${expectOutcome} detail=${got.additionalIssue}/${expectDetail} leadType=${got.leadType} urgency=${got.urgency} emergencyAlert=${got.emergencyAlert}`
+      );
+    }
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} severity-choice cases.`);
+  process.exit(passed === cases.length ? 0 : 1);
+}
+
+if (process.env.BLUE_CALLER_TEST_EMERGENCY_SUBMIT === "1") {
+  const casesPath = path.join(__dirname, "emergency_submit_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load emergency_submit_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  (async () => {
+    const posts = [];
+    const originalPost = postJsonToWebhook;
+    postJsonToWebhook = async (_webhookUrl, payload, label) => {
+      posts.push({ label, payload });
+      return { statusCode: 200, body: "{}" };
+    };
+
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    async function waitFor(pred, tries = 30) {
+      for (let i = 0; i < tries; i++) {
+        if (pred()) return true;
+        await wait(10);
+      }
+      return pred();
+    }
+
+    let passed = 0;
+    for (const tc of cases) {
+      posts.length = 0;
+      const sessionKey = `emergency-submit-${tc.name}`;
+      const caller = getOrCreateCaller(sessionKey);
+      Object.assign(caller, {
+        fullName: "Test Caller",
+        firstName: "Test",
+        phone: "+15551234567",
+        callbackNumber: "+15551234567",
+        address: "123 Main Street, Springfield, NY 12345",
+        issue: "oven not heating",
+        issueSummary: "an oven that is not heating",
+        emergencyAlert: Boolean(tc.emergencyAlert),
+        leadType: tc.leadType || (tc.emergencyAlert ? "emergency" : "service"),
+        urgency: tc.emergencyAlert ? "emergency" : "normal",
+        status: tc.emergencyAlert ? "new_emergency" : "new_lead",
+        makeSent: false,
+        makeSending: false,
+        bookingSent: false,
+        lastStep: "confirm_address",
+      });
+
+      const ws = { readyState: 1, send: () => {} };
+      sendAfterAddressConfirmed(ws, caller);
+
+      const expectSubmit = Boolean(tc.expect_submit_before_notes);
+      const expectStep = String(tc.expect_step || "");
+      let gotSubmit = false;
+      if (expectSubmit) {
+        gotSubmit = await waitFor(() => caller.makeSent === true || posts.some((p) => p.label === "MAKE"));
+      } else {
+        await wait(40);
+        gotSubmit = caller.makeSent === true || posts.some((p) => p.label === "MAKE");
+      }
+
+      const ok = caller.lastStep === expectStep && gotSubmit === expectSubmit;
+      if (ok) {
+        passed += 1;
+        console.log(`PASS  ${tc.name}`);
+      } else {
+        console.log(`FAIL  ${tc.name}`);
+        console.log(
+          `  - step=${caller.lastStep}/${expectStep} submit=${gotSubmit}/${expectSubmit} makePosts=${posts.filter((p) => p.label === "MAKE").length}`
+        );
+      }
+      delete callerStore[sessionKey];
+    }
+
+    postJsonToWebhook = originalPost;
+    console.log(`\nPassed ${passed} of ${cases.length} emergency-submit cases.`);
+    process.exit(passed === cases.length ? 0 : 1);
+  })().catch((err) => {
+    console.error("FAIL  emergency-submit regression");
+    console.error(err && err.stack ? err.stack : err);
+    process.exit(1);
+  });
+} else if (
+  process.env.BLUE_CALLER_TEST_WRAP_UP !== "1" &&
+  process.env.BLUE_CALLER_TEST_SEVERITY_CHOICE !== "1"
+) {
+  server.listen(PORT, BIND_HOST, () => {
+    console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
+  });
+}

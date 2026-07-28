@@ -1,0 +1,16 @@
+[
+  {
+    "name": "emergency_after_address_queues_lead_before_notes",
+    "emergencyAlert": true,
+    "leadType": "emergency",
+    "expect_submit_before_notes": true,
+    "expect_step": "ask_notes"
+  },
+  {
+    "name": "non_emergency_goes_to_scheduling_without_early_submit",
+    "emergencyAlert": false,
+    "leadType": "service",
+    "expect_submit_before_notes": false,
+    "expect_step": "schedule_or_callback"
+  }
+]
