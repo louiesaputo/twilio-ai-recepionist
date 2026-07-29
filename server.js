@@ -6195,6 +6195,17 @@ function queuePrimaryLeadAndBooking(caller, options = {}) {
   });
 }
 
+/**
+ * Move to optional technician notes and submit the lead immediately.
+ * Callback-requested / calendar-fallback paths previously waited for the notes
+ * reply, so a hangup at ask_notes left a completed lead only in memory.
+ */
+function enterAskNotesAndSubmitLead(ws, caller, message) {
+  caller.lastStep = "ask_notes";
+  queuePrimaryLeadAndBooking(caller);
+  sendText(ws, message);
+}
+
 
 
 
@@ -7783,7 +7794,11 @@ async function handlePrompt(ws, caller, speech) {
         return;
       }
 
-      if (isNegative(text) || containsAny(ntCook, ["normal", "standard", "regular service"])) {
+      const wantsUrgentNotEmergency = isUrgentSelection(text);
+      if (
+        (isNegative(text) || containsAny(ntCook, ["normal", "standard", "regular service"])) &&
+        !wantsUrgentNotEmergency
+      ) {
         markStandardService(caller);
         const nextStep = caller.fullName ? (hasFullName(caller.fullName) ? resolvePhoneIntakeStep(caller) : "ask_last_name") : "ask_name";
         const spellingPrompt = caller.fullName ? maybeQueueFirstNameSpelling(caller, nextStep) : "";
@@ -7796,7 +7811,7 @@ async function handlePrompt(ws, caller, speech) {
         return;
       }
 
-      if (isUrgentSelection(text)) {
+      if (wantsUrgentNotEmergency) {
         markUrgent(caller);
         const nextStep = caller.fullName ? (hasFullName(caller.fullName) ? resolvePhoneIntakeStep(caller) : "ask_last_name") : "ask_name";
         const spellingPrompt = caller.fullName ? maybeQueueFirstNameSpelling(caller, nextStep) : "";
@@ -8473,8 +8488,11 @@ async function handlePrompt(ws, caller, speech) {
         const availability = await checkCalendarAvailability(caller, requestDetails);
         if (!availability) {
           caller.status = "callback_requested";
-          caller.lastStep = "ask_notes";
-          sendText(ws, "I'm sorry, I wasn't able to pull the calendar right now. I'll note your callback request, and someone from the office will reach out to confirm the exact callback time. " + buildTechnicianNotesPrompt(caller));
+          enterAskNotesAndSubmitLead(
+            ws,
+            caller,
+            "I'm sorry, I wasn't able to pull the calendar right now. I'll note your callback request, and someone from the office will reach out to confirm the exact callback time. " + buildTechnicianNotesPrompt(caller)
+          );
           return;
         }
         if (offeredAvailabilityNeedsLateDayFallback(availability)) {
@@ -8499,8 +8517,11 @@ async function handlePrompt(ws, caller, speech) {
         const availability = await checkCalendarAvailability(caller, requestDetails);
         if (!availability) {
           caller.status = "callback_requested";
-          caller.lastStep = "ask_notes";
-          sendText(ws, "I'm sorry, I wasn't able to pull the calendar right now. I'll note your callback preference, and someone from the office will reach out to confirm the exact callback time. " + buildTechnicianNotesPrompt(caller));
+          enterAskNotesAndSubmitLead(
+            ws,
+            caller,
+            "I'm sorry, I wasn't able to pull the calendar right now. I'll note your callback preference, and someone from the office will reach out to confirm the exact callback time. " + buildTechnicianNotesPrompt(caller)
+          );
           return;
         }
         if (offeredAvailabilityNeedsLateDayFallback(availability)) {
@@ -8518,8 +8539,11 @@ async function handlePrompt(ws, caller, speech) {
 
       if (wantsOfficeCallback(text)) {
         caller.status = "callback_requested";
-        caller.lastStep = "ask_notes";
-        sendText(ws, "Alright. Someone from the office will call you to arrange the next available time. " + buildTechnicianNotesPrompt(caller));
+        enterAskNotesAndSubmitLead(
+          ws,
+          caller,
+          "Alright. Someone from the office will call you to arrange the next available time. " + buildTechnicianNotesPrompt(caller)
+        );
         return;
       }
 
@@ -8553,8 +8577,11 @@ async function handlePrompt(ws, caller, speech) {
         const availability = await checkCalendarAvailability(caller, requestDetails);
         if (!availability) {
           caller.status = "callback_requested";
-          caller.lastStep = "ask_notes";
-          sendText(ws, "I'm sorry, I wasn't able to pull the calendar right now. I'll note your callback request, and someone from the office will reach out to confirm the exact callback time. " + buildTechnicianNotesPrompt(caller));
+          enterAskNotesAndSubmitLead(
+            ws,
+            caller,
+            "I'm sorry, I wasn't able to pull the calendar right now. I'll note your callback request, and someone from the office will reach out to confirm the exact callback time. " + buildTechnicianNotesPrompt(caller)
+          );
           return;
         }
         if (offeredAvailabilityNeedsLateDayFallback(availability)) {
@@ -8599,8 +8626,11 @@ async function handlePrompt(ws, caller, speech) {
         if (!availability) {
           caller.status = "callback_requested";
           caller.appointmentTime = detectTimePreference(text) || cleanForSpeech(text);
-          caller.lastStep = "ask_notes";
-          sendText(ws, "I'm sorry, I wasn't able to pull the calendar right now. I'll note your callback preference, and someone from the office will reach out to confirm the exact callback time. " + buildTechnicianNotesPrompt(caller));
+          enterAskNotesAndSubmitLead(
+            ws,
+            caller,
+            "I'm sorry, I wasn't able to pull the calendar right now. I'll note your callback preference, and someone from the office will reach out to confirm the exact callback time. " + buildTechnicianNotesPrompt(caller)
+          );
           return;
         }
         if (offeredAvailabilityNeedsLateDayFallback(availability)) {
@@ -8669,8 +8699,11 @@ async function handlePrompt(ws, caller, speech) {
         const availability = await checkCalendarAvailability(caller, requestDetails);
         if (!availability) {
           caller.status = "callback_requested";
-          caller.lastStep = "ask_notes";
-          sendText(ws, "I'm sorry, I wasn't able to pull the calendar right now. I'll note your callback preference, and someone from the office will reach out to confirm the exact callback time. " + buildTechnicianNotesPrompt(caller));
+          enterAskNotesAndSubmitLead(
+            ws,
+            caller,
+            "I'm sorry, I wasn't able to pull the calendar right now. I'll note your callback preference, and someone from the office will reach out to confirm the exact callback time. " + buildTechnicianNotesPrompt(caller)
+          );
           return;
         }
         if (offeredAvailabilityNeedsLateDayFallback(availability)) {
@@ -8721,8 +8754,11 @@ async function handlePrompt(ws, caller, speech) {
 
           if (schedulingDecision.intent === "request_office_callback") {
             caller.status = "callback_requested";
-            caller.lastStep = "ask_notes";
-            sendText(ws, "Alright. Someone from the office will call you to arrange the next available time. " + buildTechnicianNotesPrompt(caller));
+            enterAskNotesAndSubmitLead(
+              ws,
+              caller,
+              "Alright. Someone from the office will call you to arrange the next available time. " + buildTechnicianNotesPrompt(caller)
+            );
             return;
           }
 
@@ -8738,8 +8774,7 @@ async function handlePrompt(ws, caller, speech) {
             if (!alternateResult || !alternateResult.availability) {
               sendText(ws, "I wasn't able to pull a different opening right now. Someone from the office will reach out to confirm the exact callback time.");
               caller.status = "callback_requested";
-              caller.lastStep = "ask_notes";
-              sendText(ws, buildTechnicianNotesPrompt(caller));
+              enterAskNotesAndSubmitLead(ws, caller, buildTechnicianNotesPrompt(caller));
               return;
             }
             if (offeredAvailabilityNeedsLateDayFallback(alternateResult.availability)) {
@@ -8776,8 +8811,7 @@ async function handlePrompt(ws, caller, speech) {
         if (!alternateResult || !alternateResult.availability) {
           sendText(ws, "I wasn't able to pull a different opening right now. Someone from the office will reach out to confirm the exact callback time.");
           caller.status = "callback_requested";
-          caller.lastStep = "ask_notes";
-          sendText(ws, buildTechnicianNotesPrompt(caller));
+          enterAskNotesAndSubmitLead(ws, caller, buildTechnicianNotesPrompt(caller));
           return;
         }
         if (offeredAvailabilityNeedsLateDayFallback(alternateResult.availability)) {
@@ -8844,7 +8878,9 @@ async function handlePrompt(ws, caller, speech) {
 
 
 
-      queuePrimaryLeadAndBooking(caller);
+      // If the lead was already submitted (e.g. office callback / calendar fallback),
+      // force a resubmit when the caller adds optional technician notes.
+      queuePrimaryLeadAndBooking(caller, { forceLead: hadNotes && (caller.makeSent || caller.makeSending) });
 
 
 
@@ -9525,8 +9561,152 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
 
   console.log(`\nPassed ${passed} of ${cases.length} wrap-up cases.`);
   process.exit(passed === cases.length ? 0 : 1);
-}
+} else if (process.env.BLUE_CALLER_TEST_CALLBACK_SUBMIT === "1") {
+  const casesPath = path.join(__dirname, "callback_submit_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load callback_submit_cases.json:", err.message);
+    process.exit(1);
+  }
 
-server.listen(PORT, BIND_HOST, () => {
-  console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
-});
+  (async () => {
+    const posts = [];
+    const originalPost = postJsonToWebhook;
+    postJsonToWebhook = async (_webhookUrl, payload, label) => {
+      posts.push({ label, payload });
+      return { statusCode: 200, body: "{}" };
+    };
+
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    async function waitFor(pred, tries = 40) {
+      for (let i = 0; i < tries; i++) {
+        if (pred()) return true;
+        await wait(10);
+      }
+      return pred();
+    }
+
+    let passed = 0;
+    for (const tc of cases) {
+      posts.length = 0;
+      const sessionKey = `callback-submit-${tc.name}`;
+      const caller = getOrCreateCaller(sessionKey);
+      Object.assign(caller, {
+        fullName: "Test Caller",
+        firstName: "Test",
+        phone: "+15551234567",
+        callbackNumber: "+15551234567",
+        address: "123 Main Street, Springfield, NY 12345",
+        issue: "dishwasher leaking",
+        issueSummary: "a dishwasher that is leaking",
+        emergencyAlert: false,
+        leadType: "service",
+        urgency: "normal",
+        status: "new_lead",
+        makeSent: false,
+        makeSending: false,
+        bookingSent: false,
+        calendarSlotConfirmed: false,
+        lastStep: tc.step || "schedule_or_callback",
+      });
+
+      const ws = { readyState: 1, send: () => {} };
+      await handlePrompt(ws, caller, tc.text);
+
+      const expectSubmit = Boolean(tc.expect_submit_before_notes);
+      const expectStep = String(tc.expect_step || "");
+      const expectStatus = String(tc.expect_status || "");
+      let gotSubmit = false;
+      if (expectSubmit) {
+        gotSubmit = await waitFor(() => caller.makeSent === true || posts.some((p) => p.label === "MAKE"));
+      } else {
+        await wait(40);
+        gotSubmit = caller.makeSent === true || posts.some((p) => p.label === "MAKE");
+      }
+
+      const ok =
+        caller.lastStep === expectStep &&
+        caller.status === expectStatus &&
+        gotSubmit === expectSubmit;
+      if (ok) {
+        passed += 1;
+        console.log(`PASS  ${tc.name}`);
+      } else {
+        console.log(`FAIL  ${tc.name}`);
+        console.log(
+          `  - step=${caller.lastStep}/${expectStep} status=${caller.status}/${expectStatus} submit=${gotSubmit}/${expectSubmit} makePosts=${posts.filter((p) => p.label === "MAKE").length}`
+        );
+      }
+      delete callerStore[sessionKey];
+    }
+
+    postJsonToWebhook = originalPost;
+    console.log(`\nPassed ${passed} of ${cases.length} callback-submit cases.`);
+    process.exit(passed === cases.length ? 0 : 1);
+  })().catch((err) => {
+    console.error("FAIL  callback-submit regression");
+    console.error(err && err.stack ? err.stack : err);
+    process.exit(1);
+  });
+} else if (process.env.BLUE_CALLER_TEST_APPLIANCE_URGENCY === "1") {
+  const casesPath = path.join(__dirname, "appliance_urgency_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load appliance_urgency_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  (async () => {
+    let passed = 0;
+    for (const tc of cases) {
+      const sessionKey = `appliance-urgency-${tc.name}`;
+      const caller = getOrCreateCaller(sessionKey);
+      Object.assign(caller, {
+        fullName: "Test Caller",
+        firstName: "Test",
+        phone: "+15551234567",
+        callbackNumber: "+15551234567",
+        issue: "oven not heating",
+        issueSummary: "an oven that is not heating",
+        emergencyAlert: false,
+        leadType: "service",
+        urgency: "normal",
+        status: "new_lead",
+        lastStep: "appliance_priority_choice",
+      });
+
+      const ws = { readyState: 1, send: () => {} };
+      await handlePrompt(ws, caller, tc.text);
+
+      const ok =
+        caller.urgency === tc.expect_urgency &&
+        Boolean(caller.emergencyAlert) === Boolean(tc.expect_emergency_alert) &&
+        caller.leadType === tc.expect_lead_type;
+      if (ok) {
+        passed += 1;
+        console.log(`PASS  ${tc.name}`);
+      } else {
+        console.log(`FAIL  ${tc.name}`);
+        console.log(
+          `  - urgency=${caller.urgency}/${tc.expect_urgency} emergencyAlert=${caller.emergencyAlert}/${tc.expect_emergency_alert} leadType=${caller.leadType}/${tc.expect_lead_type}`
+        );
+      }
+      delete callerStore[sessionKey];
+    }
+
+    console.log(`\nPassed ${passed} of ${cases.length} appliance-urgency cases.`);
+    process.exit(passed === cases.length ? 0 : 1);
+  })().catch((err) => {
+    console.error("FAIL  appliance-urgency regression");
+    console.error(err && err.stack ? err.stack : err);
+    process.exit(1);
+  });
+} else {
+  server.listen(PORT, BIND_HOST, () => {
+    console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
+  });
+}
