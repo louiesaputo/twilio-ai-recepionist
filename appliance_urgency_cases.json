@@ -1,0 +1,30 @@
+[
+  {
+    "name": "no_just_urgent_marks_urgent",
+    "text": "No, just urgent",
+    "expect_urgency": "urgent",
+    "expect_emergency_alert": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "no_marks_standard",
+    "text": "No",
+    "expect_urgency": "normal",
+    "expect_emergency_alert": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "asap_marks_urgent",
+    "text": "ASAP please",
+    "expect_urgency": "urgent",
+    "expect_emergency_alert": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "yes_marks_emergency",
+    "text": "Yes",
+    "expect_urgency": "emergency",
+    "expect_emergency_alert": true,
+    "expect_lead_type": "emergency"
+  }
+]
