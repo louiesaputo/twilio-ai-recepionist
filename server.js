@@ -6195,6 +6195,18 @@ function queuePrimaryLeadAndBooking(caller, options = {}) {
   });
 }
 
+/**
+ * Move to optional technician notes and submit the lead immediately.
+ * Quote/demo email, late-day preference, and freeform appointment paths
+ * previously waited for the notes reply, so a hangup at ask_notes left a
+ * completed lead only in memory.
+ */
+function enterAskNotesAndSubmitLead(ws, caller, message) {
+  caller.lastStep = "ask_notes";
+  queuePrimaryLeadAndBooking(caller);
+  sendText(ws, message);
+}
+
 
 
 
@@ -7831,8 +7843,11 @@ async function handlePrompt(ws, caller, speech) {
       const normalized = normalizeIntentText(text);
       if (isAffirmative(text) || containsAny(normalized, ["note that", "as close to 5", "as close to five", "as late as possible", "late in the day", "that works", "that is fine", "thats fine"])) {
         finalizeLateDayPreference(caller);
-        caller.lastStep = "ask_notes";
-        sendText(ws, `Got it. I'll note that you'd prefer a callback as close to 5:00 as possible. ${buildTechnicianNotesPrompt(caller)}`);
+        enterAskNotesAndSubmitLead(
+          ws,
+          caller,
+          `Got it. I'll note that you'd prefer a callback as close to 5:00 as possible. ${buildTechnicianNotesPrompt(caller)}`
+        );
         return;
       }
 
@@ -8402,8 +8417,7 @@ async function handlePrompt(ws, caller, speech) {
       if (!isNegative(text) && text.includes("@")) {
         caller.demoEmail = cleanForSpeech(text);
       }
-      caller.lastStep = "ask_notes";
-      sendText(ws, buildTechnicianNotesPrompt(caller));
+      enterAskNotesAndSubmitLead(ws, caller, buildTechnicianNotesPrompt(caller));
       return;
     }
 
@@ -8416,8 +8430,7 @@ async function handlePrompt(ws, caller, speech) {
 
     case "capture_quote_email": {
       caller.demoEmail = cleanForSpeech(text);
-      caller.lastStep = "ask_notes";
-      sendText(ws, buildTechnicianNotesPrompt(caller));
+      enterAskNotesAndSubmitLead(ws, caller, buildTechnicianNotesPrompt(caller));
       return;
     }
 
@@ -8437,8 +8450,11 @@ async function handlePrompt(ws, caller, speech) {
       if (!isNegative(text) && text.includes("@")) {
         caller.demoEmail = cleanForSpeech(text);
       }
-      caller.lastStep = "ask_notes";
-      sendText(ws, "Before I submit this demo request, are there any notes or details you'd like me to add?");
+      enterAskNotesAndSubmitLead(
+        ws,
+        caller,
+        "Before I submit this demo request, are there any notes or details you'd like me to add?"
+      );
       return;
     }
 
@@ -8451,8 +8467,11 @@ async function handlePrompt(ws, caller, speech) {
 
     case "capture_demo_email": {
       caller.demoEmail = cleanForSpeech(text);
-      caller.lastStep = "ask_notes";
-      sendText(ws, "Before I submit this demo request, are there any notes or details you'd like me to add?");
+      enterAskNotesAndSubmitLead(
+        ws,
+        caller,
+        "Before I submit this demo request, are there any notes or details you'd like me to add?"
+      );
       return;
     }
 
@@ -8618,8 +8637,11 @@ async function handlePrompt(ws, caller, speech) {
       caller.appointmentTime = cleanForSpeech(text);
       caller.status = "scheduled_pending_confirmation";
       caller.calendarSlotConfirmed = false;
-      caller.lastStep = "ask_notes";
-      sendText(ws, `Okay, I have your requested callback time noted for ${caller.appointmentDate} at ${caller.appointmentTime}. Someone from our office will call you to confirm the details. ${buildTechnicianNotesPrompt(caller)}`);
+      enterAskNotesAndSubmitLead(
+        ws,
+        caller,
+        `Okay, I have your requested callback time noted for ${caller.appointmentDate} at ${caller.appointmentTime}. Someone from our office will call you to confirm the details. ${buildTechnicianNotesPrompt(caller)}`
+      );
       return;
     }
 
@@ -8837,14 +8859,9 @@ async function handlePrompt(ws, caller, speech) {
       const hadNotes = Boolean(cleanedNotesText) && !decliningTechNotes;
       if (hadNotes) caller.notes = cleanedNotesText;
 
-
-
-
-
-
-
-
-      queuePrimaryLeadAndBooking(caller);
+      // If the lead was already submitted (quote/demo/late-day/freeform time),
+      // force a resubmit when the caller adds optional technician notes.
+      queuePrimaryLeadAndBooking(caller, { forceLead: hadNotes && (caller.makeSent || caller.makeSending) });
 
 
 
@@ -9525,8 +9542,101 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
 
   console.log(`\nPassed ${passed} of ${cases.length} wrap-up cases.`);
   process.exit(passed === cases.length ? 0 : 1);
-}
+} else if (process.env.BLUE_CALLER_TEST_NOTES_SUBMIT === "1") {
+  const casesPath = path.join(__dirname, "notes_submit_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load notes_submit_cases.json:", err.message);
+    process.exit(1);
+  }
 
-server.listen(PORT, BIND_HOST, () => {
-  console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
-});
+  (async () => {
+    const posts = [];
+    const originalPost = postJsonToWebhook;
+    postJsonToWebhook = async (_webhookUrl, payload, label) => {
+      posts.push({ label, payload });
+      return { statusCode: 200, body: "{}" };
+    };
+
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    async function waitFor(pred, tries = 40) {
+      for (let i = 0; i < tries; i++) {
+        if (pred()) return true;
+        await wait(10);
+      }
+      return pred();
+    }
+
+    let passed = 0;
+    for (const tc of cases) {
+      posts.length = 0;
+      const sessionKey = `notes-submit-${tc.name}`;
+      const caller = getOrCreateCaller(sessionKey);
+      Object.assign(caller, {
+        fullName: "Test Caller",
+        firstName: "Test",
+        phone: "+15551234567",
+        callbackNumber: "+15551234567",
+        address: "123 Main Street, Springfield, NY 12345",
+        issue: tc.issue || "dishwasher leaking",
+        issueSummary: tc.issueSummary || "a dishwasher that is leaking",
+        projectType: tc.projectType || "",
+        emergencyAlert: false,
+        leadType: tc.leadType || "service",
+        urgency: "normal",
+        status: tc.status || "new_lead",
+        appointmentDate: tc.appointmentDate || "",
+        appointmentTime: tc.appointmentTime || "",
+        pendingLateDayDate: tc.pendingLateDayDate || "",
+        makeSent: false,
+        makeSending: false,
+        bookingSent: false,
+        calendarSlotConfirmed: false,
+        lastStep: tc.step,
+      });
+
+      const ws = { readyState: 1, send: () => {} };
+      await handlePrompt(ws, caller, tc.text);
+
+      const expectSubmit = Boolean(tc.expect_submit_before_notes);
+      const expectStep = String(tc.expect_step || "");
+      const expectStatus = String(tc.expect_status || "");
+      let gotSubmit = false;
+      if (expectSubmit) {
+        gotSubmit = await waitFor(() => caller.makeSent === true || posts.some((p) => p.label === "MAKE"));
+      } else {
+        await wait(40);
+        gotSubmit = caller.makeSent === true || posts.some((p) => p.label === "MAKE");
+      }
+
+      const ok =
+        caller.lastStep === expectStep &&
+        caller.status === expectStatus &&
+        gotSubmit === expectSubmit;
+      if (ok) {
+        passed += 1;
+        console.log(`PASS  ${tc.name}`);
+      } else {
+        console.log(`FAIL  ${tc.name}`);
+        console.log(
+          `  - step=${caller.lastStep}/${expectStep} status=${caller.status}/${expectStatus} submit=${gotSubmit}/${expectSubmit} makePosts=${posts.filter((p) => p.label === "MAKE").length}`
+        );
+      }
+      delete callerStore[sessionKey];
+    }
+
+    postJsonToWebhook = originalPost;
+    console.log(`\nPassed ${passed} of ${cases.length} notes-submit cases.`);
+    process.exit(passed === cases.length ? 0 : 1);
+  })().catch((err) => {
+    console.error("FAIL  notes-submit regression");
+    console.error(err && err.stack ? err.stack : err);
+    process.exit(1);
+  });
+} else {
+  server.listen(PORT, BIND_HOST, () => {
+    console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
+  });
+}
