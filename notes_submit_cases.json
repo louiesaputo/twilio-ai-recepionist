@@ -1,0 +1,62 @@
+[
+  {
+    "name": "quote_email_decline_submits_before_notes",
+    "step": "ask_quote_email_optional",
+    "text": "No thanks",
+    "leadType": "quote",
+    "status": "quote_request",
+    "projectType": "bathroom remodel",
+    "issue": "I need a quote for a bathroom remodel",
+    "issueSummary": "bathroom remodel",
+    "expect_status": "quote_request",
+    "expect_step": "ask_notes",
+    "expect_submit_before_notes": true
+  },
+  {
+    "name": "demo_email_decline_submits_before_notes",
+    "step": "ask_demo_email_optional",
+    "text": "No",
+    "leadType": "demo",
+    "status": "demo_request",
+    "issue": "demo",
+    "issueSummary": "demo request",
+    "expect_status": "demo_request",
+    "expect_step": "ask_notes",
+    "expect_submit_before_notes": true
+  },
+  {
+    "name": "late_day_preference_submits_before_notes",
+    "step": "late_day_preference_choice",
+    "text": "Yes, please note that",
+    "leadType": "service",
+    "status": "new_lead",
+    "pendingLateDayDate": "tomorrow",
+    "expect_status": "scheduled_pending_confirmation",
+    "expect_step": "ask_notes",
+    "expect_submit_before_notes": true
+  },
+  {
+    "name": "freeform_appointment_time_submits_before_notes",
+    "step": "ask_appointment_time",
+    "text": "after the kids get off the bus",
+    "leadType": "service",
+    "status": "new_lead",
+    "appointmentDate": "Thursday",
+    "expect_status": "scheduled_pending_confirmation",
+    "expect_step": "ask_notes",
+    "expect_submit_before_notes": true
+  },
+  {
+    "name": "quote_email_accept_does_not_submit_yet",
+    "step": "ask_quote_email_optional",
+    "text": "yes let's add an email",
+    "leadType": "quote",
+    "status": "quote_request",
+    "projectType": "kitchen remodel",
+    "issue": "I need a quote for a kitchen remodel",
+    "issueSummary": "kitchen remodel",
+    "expect_status": "quote_request",
+    "expect_step": "capture_quote_email",
+    "expect_submit_before_notes": false
+  }
+]
