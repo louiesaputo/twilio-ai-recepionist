@@ -1,0 +1,32 @@
+[
+  {
+    "name": "demo_notes_close_retries_after_in_flight_failure",
+    "leadType": "demo",
+    "step": "ask_notes",
+    "text": "gate code is 12",
+    "issueSummary": "demo scenario dishwasher leak",
+    "expect_make_posts": 2,
+    "expect_make_sent": true
+  },
+  {
+    "name": "final_wrap_up_retries_after_notes_submit_failure",
+    "leadType": "service",
+    "step": "ask_notes",
+    "text": "dog in backyard",
+    "issueSummary": "a dishwasher that is leaking",
+    "follow_up_step": "final_question",
+    "follow_up_text": "no that's all",
+    "expect_make_posts": 2,
+    "expect_make_sent": true
+  },
+  {
+    "name": "successful_overlap_does_not_duplicate_lead",
+    "leadType": "demo",
+    "step": "ask_notes",
+    "text": "no notes",
+    "issueSummary": "demo scenario oven issue",
+    "first_post_succeeds": true,
+    "expect_make_posts": 1,
+    "expect_make_sent": true
+  }
+]
