@@ -5555,6 +5555,7 @@ function getOrCreateCaller(key) {
       pendingUpdatedContactFullName: "",
       resumeStepAfterPhoneUpdate: "",
       pendingLeadResubmission: false,
+      pendingLeadRetryOnFailure: false,
       repeatPromptIndex: 0,
       promptBuffer: "",
       pendingGreetingPrompt: "",
@@ -6085,7 +6086,12 @@ function postJsonToWebhook(webhookUrl, payload, label, timeoutMs = WEBHOOK_TIMEO
 async function sendLeadToMake(caller, force = false) {
   if (!shouldSendToMake(caller)) return;
   if (caller.makeSending) {
+    // Force overlaps always resubmit (notes/additional details may have changed).
+    // Non-force overlaps used to be dropped silently; if the in-flight POST then
+    // timed out/failed, the natural second attempt (demo close or final wrap-up)
+    // was already consumed and the completed lead was never sent.
     if (force) caller.pendingLeadResubmission = true;
+    else caller.pendingLeadRetryOnFailure = true;
     return;
   }
   if (!force && caller.makeSent) return;
@@ -6099,10 +6105,18 @@ async function sendLeadToMake(caller, force = false) {
 
   if (caller.pendingLeadResubmission) {
     caller.pendingLeadResubmission = false;
+    caller.pendingLeadRetryOnFailure = false;
     caller.makeSent = false;
     queueBackgroundTask("MAKE RESUBMIT", async () => {
       await sendLeadToMake(caller, true);
     });
+  } else if (caller.pendingLeadRetryOnFailure) {
+    caller.pendingLeadRetryOnFailure = false;
+    if (!caller.makeSent) {
+      queueBackgroundTask("MAKE RETRY", async () => {
+        await sendLeadToMake(caller, false);
+      });
+    }
   }
 }
 
@@ -9525,8 +9539,109 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
 
   console.log(`\nPassed ${passed} of ${cases.length} wrap-up cases.`);
   process.exit(passed === cases.length ? 0 : 1);
-}
+} else if (process.env.BLUE_CALLER_TEST_MAKE_RETRY === "1") {
+  const casesPath = path.join(__dirname, "make_retry_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load make_retry_cases.json:", err.message);
+    process.exit(1);
+  }
 
-server.listen(PORT, BIND_HOST, () => {
-  console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
-});
+  (async () => {
+    const posts = [];
+    const originalPost = postJsonToWebhook;
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    async function waitFor(pred, tries = 80) {
+      for (let i = 0; i < tries; i++) {
+        if (pred()) return true;
+        await wait(10);
+      }
+      return pred();
+    }
+
+    let passed = 0;
+    for (const tc of cases) {
+      posts.length = 0;
+      let makeAttempts = 0;
+      const firstSucceeds = tc.first_post_succeeds === true;
+      postJsonToWebhook = async (_webhookUrl, payload, label) => {
+        if (label === "MAKE") {
+          makeAttempts += 1;
+          posts.push({ label, payload, attempt: makeAttempts });
+          if (!firstSucceeds && makeAttempts === 1) {
+            // Simulate the in-flight POST timing out / failing while a second
+            // non-force submit was already dropped due to makeSending.
+            await wait(30);
+            return null;
+          }
+          return { statusCode: 200, body: "{}" };
+        }
+        return { statusCode: 200, body: "{}" };
+      };
+
+      const sessionKey = `make-retry-${tc.name}`;
+      const caller = getOrCreateCaller(sessionKey);
+      Object.assign(caller, {
+        fullName: "Test Caller",
+        firstName: "Test",
+        phone: "+15551234567",
+        callbackNumber: "+15551234567",
+        address: "123 Main Street, Springfield, NY 12345",
+        issue: tc.issue || "dishwasher leaking",
+        issueSummary: tc.issueSummary || "a dishwasher that is leaking",
+        emergencyAlert: false,
+        leadType: tc.leadType || "service",
+        urgency: "normal",
+        status: "new_lead",
+        makeSent: false,
+        makeSending: false,
+        pendingLeadResubmission: false,
+        pendingLeadRetryOnFailure: false,
+        bookingSent: false,
+        bookingSending: false,
+        calendarSlotConfirmed: false,
+        lastStep: tc.step,
+      });
+
+      const ws = { readyState: 1, send: () => {}, sessionKey };
+      await handlePrompt(ws, caller, tc.text);
+      if (tc.follow_up_text) {
+        // Keep the first MAKE attempt in flight so the follow-up wrap-up
+        // overlaps and would previously be dropped with no retry.
+        await wait(5);
+        caller.lastStep = tc.follow_up_step || "final_question";
+        await handlePrompt(ws, caller, tc.follow_up_text);
+      }
+
+      const expectPosts = Number(tc.expect_make_posts || 0);
+      const expectSent = Boolean(tc.expect_make_sent);
+      const gotSent = await waitFor(() => caller.makeSent === expectSent && posts.filter((p) => p.label === "MAKE").length >= expectPosts);
+      const makePostCount = posts.filter((p) => p.label === "MAKE").length;
+      const ok = gotSent && caller.makeSent === expectSent && makePostCount === expectPosts;
+      if (ok) {
+        passed += 1;
+        console.log(`PASS  ${tc.name}`);
+      } else {
+        console.log(`FAIL  ${tc.name}`);
+        console.log(
+          `  - makeSent=${caller.makeSent}/${expectSent} makePosts=${makePostCount}/${expectPosts} pendingRetry=${caller.pendingLeadRetryOnFailure}`
+        );
+      }
+      delete callerStore[sessionKey];
+    }
+
+    postJsonToWebhook = originalPost;
+    console.log(`\nPassed ${passed} of ${cases.length} make-retry cases.`);
+    process.exit(passed === cases.length ? 0 : 1);
+  })().catch((err) => {
+    console.error("FAIL  make-retry regression");
+    console.error(err && err.stack ? err.stack : err);
+    process.exit(1);
+  });
+} else {
+  server.listen(PORT, BIND_HOST, () => {
+    console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
+  });
+}
