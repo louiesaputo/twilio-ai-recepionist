@@ -1,0 +1,35 @@
+[
+  {
+    "name": "final_question_callback_change_resubmits_make",
+    "start_step": "ask_notes",
+    "notes_text": "no notes",
+    "update_intent": "I need to change my callback number",
+    "new_phone": "404-555-1212",
+    "same_person_text": "same person",
+    "expect_callback": "4045551212",
+    "expect_make_posts": 2,
+    "expect_latest_callback": "4045551212"
+  },
+  {
+    "name": "final_question_contact_name_and_phone_resubmit",
+    "start_step": "ask_notes",
+    "notes_text": "gate code 12",
+    "update_intent": "I need to change my contact info",
+    "new_phone": "212-555-0199",
+    "same_person_text": "change it to Jane Smith",
+    "expect_callback": "2125550199",
+    "expect_full_name": "Jane Smith",
+    "expect_make_posts": 2,
+    "expect_latest_callback": "2125550199"
+  },
+  {
+    "name": "pre_submit_contact_update_does_not_force_early",
+    "start_step": "ask_appointment_day",
+    "update_intent": "I need to change my callback number",
+    "new_phone": "305-555-0144",
+    "same_person_text": "same person",
+    "expect_callback": "3055550144",
+    "expect_make_posts": 0,
+    "expect_step": "ask_notes"
+  }
+]

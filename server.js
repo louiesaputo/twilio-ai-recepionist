@@ -3025,6 +3025,14 @@ function afterCallbackDetailsUpdated(ws, caller, { nameAlsoUpdated = false } = {
   const resume = caller.resumeStepAfterPhoneUpdate || "";
   caller.resumeStepAfterPhoneUpdate = "";
 
+  // Contact fields just changed. If a lead was already queued/sent, force-resubmit
+  // so Make receives the corrected callback number / name (wrap-up alone is non-force
+  // and would be skipped while makeSent is still true).
+  if (caller.makeSent || caller.makeSending) {
+    caller.makeSent = false;
+    queuePrimaryLeadAndBooking(caller, { forceLead: true });
+  }
+
   const updateLine = nameAlsoUpdated
     ? "Got it. I've updated the callback number and contact name."
     : "Got it. I've updated the callback number.";
@@ -9525,8 +9533,121 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
 
   console.log(`\nPassed ${passed} of ${cases.length} wrap-up cases.`);
   process.exit(passed === cases.length ? 0 : 1);
-}
+} else if (process.env.BLUE_CALLER_TEST_CONTACT_RESUBMIT === "1") {
+  const casesPath = path.join(__dirname, "contact_resubmit_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load contact_resubmit_cases.json:", err.message);
+    process.exit(1);
+  }
 
-server.listen(PORT, BIND_HOST, () => {
-  console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
-});
+  (async () => {
+    const posts = [];
+    const originalPost = postJsonToWebhook;
+    postJsonToWebhook = async (_webhookUrl, payload, label) => {
+      posts.push({ label, payload });
+      return { statusCode: 200, body: "{}" };
+    };
+
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    async function waitFor(pred, tries = 80) {
+      for (let i = 0; i < tries; i++) {
+        if (pred()) return true;
+        await wait(10);
+      }
+      return pred();
+    }
+
+    let passed = 0;
+    for (const tc of cases) {
+      posts.length = 0;
+      const sessionKey = `contact-resubmit-${tc.name}`;
+      const caller = getOrCreateCaller(sessionKey);
+      Object.assign(caller, {
+        fullName: "Test Caller",
+        firstName: "Test",
+        phone: "+15551234567",
+        callbackNumber: "5551234567",
+        address: "123 Main Street, Springfield, NY 12345",
+        issue: "dishwasher leaking",
+        issueSummary: "a dishwasher that is leaking",
+        emergencyAlert: false,
+        leadType: "service",
+        urgency: "normal",
+        status: "new_lead",
+        makeSent: false,
+        makeSending: false,
+        pendingLeadResubmission: false,
+        bookingSent: false,
+        bookingSending: false,
+        calendarSlotConfirmed: false,
+        lastStep: tc.start_step,
+      });
+
+      const ws = { readyState: 1, send: () => {}, sessionKey };
+
+      if (tc.notes_text) {
+        await handlePrompt(ws, caller, tc.notes_text);
+        const submitted = await waitFor(() => caller.makeSent === true || posts.some((p) => p.label === "MAKE"));
+        if (!submitted) {
+          console.log(`FAIL  ${tc.name}`);
+          console.log("  - initial notes submit never reached Make");
+          delete callerStore[sessionKey];
+          continue;
+        }
+        caller.lastStep = "final_question";
+      }
+
+      await handlePrompt(ws, caller, tc.update_intent);
+      await handlePrompt(ws, caller, tc.new_phone);
+      await handlePrompt(ws, caller, tc.same_person_text);
+
+      const expectPosts = Number(tc.expect_make_posts || 0);
+      const expectCallback = String(tc.expect_callback || "");
+      const expectLatest = String(tc.expect_latest_callback || expectCallback);
+      const expectName = tc.expect_full_name ? String(tc.expect_full_name) : "";
+      const expectStep = tc.expect_step ? String(tc.expect_step) : "";
+
+      const gotPosts = await waitFor(() => posts.filter((p) => p.label === "MAKE").length >= expectPosts);
+      const makePosts = posts.filter((p) => p.label === "MAKE");
+      const latestCallback = makePosts.length
+        ? String(makePosts[makePosts.length - 1].payload.callbackNumber || "")
+        : "";
+
+      const ok =
+        gotPosts &&
+        makePosts.length === expectPosts &&
+        String(caller.callbackNumber || "") === expectCallback &&
+        (!expectLatest || latestCallback === expectLatest || expectPosts === 0) &&
+        (!expectName || String(caller.fullName || "") === expectName) &&
+        (!expectStep || caller.lastStep === expectStep);
+
+      if (ok) {
+        passed += 1;
+        console.log(`PASS  ${tc.name}`);
+      } else {
+        console.log(`FAIL  ${tc.name}`);
+        console.log(
+          `  - makePosts=${makePosts.length}/${expectPosts} callback=${caller.callbackNumber}/${expectCallback}` +
+            ` latestPayload=${latestCallback}/${expectLatest} name=${caller.fullName}/${expectName || "(any)"}` +
+            ` step=${caller.lastStep}/${expectStep || "(any)"} makeSent=${caller.makeSent}`
+        );
+      }
+      delete callerStore[sessionKey];
+    }
+
+    postJsonToWebhook = originalPost;
+    console.log(`\nPassed ${passed} of ${cases.length} contact-resubmit cases.`);
+    process.exit(passed === cases.length ? 0 : 1);
+  })().catch((err) => {
+    console.error("FAIL  contact-resubmit regression");
+    console.error(err && err.stack ? err.stack : err);
+    process.exit(1);
+  });
+} else {
+  server.listen(PORT, BIND_HOST, () => {
+    console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
+  });
+}
