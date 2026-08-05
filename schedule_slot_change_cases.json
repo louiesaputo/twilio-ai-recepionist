@@ -1,0 +1,50 @@
+[
+  {
+    "name": "pure_yes_that_works",
+    "text": "Yes, that works",
+    "expect_accept": true,
+    "expect_different_slot": false
+  },
+  {
+    "name": "pure_works_for_me",
+    "text": "works for me thanks",
+    "expect_accept": true,
+    "expect_different_slot": false
+  },
+  {
+    "name": "mixed_tomorrow_at_nine",
+    "text": "Yes, that works, but can we do tomorrow at 9 instead?",
+    "expect_accept": false,
+    "expect_different_slot": true
+  },
+  {
+    "name": "mixed_three_pm",
+    "text": "that works for me but can we do 3pm",
+    "expect_accept": false,
+    "expect_different_slot": true
+  },
+  {
+    "name": "mixed_tomorrow_morning",
+    "text": "sounds good, but tomorrow morning instead",
+    "expect_accept": false,
+    "expect_different_slot": true
+  },
+  {
+    "name": "mixed_friday_afternoon",
+    "text": "okay that works, can we do Friday afternoon?",
+    "expect_accept": false,
+    "expect_different_slot": true
+  },
+  {
+    "name": "alternate_without_acceptance",
+    "text": "can we do tomorrow at 9 instead?",
+    "expect_accept": false,
+    "expect_different_slot": true
+  },
+  {
+    "name": "emergency_mixed_still_accepts_schedule",
+    "text": "Yes, that works, but now water is pouring through the ceiling and I need emergency help",
+    "expect_accept": true,
+    "expect_different_slot": false
+  }
+]
