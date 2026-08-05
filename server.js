@@ -6584,6 +6584,24 @@ function isScheduleOfferAcceptance(text) {
   ]) || isAffirmative(t);
 }
 
+/** True when the caller asks for a different date/time in the same turn as soft acceptance. */
+function utteranceRequestsDifferentCallbackSlot(text) {
+  const raw = text || "";
+  if (!raw) return false;
+  if (isAlternateAvailabilityRequest(raw)) return true;
+  if (hasExplicitSchedulingRequest(raw)) return true;
+  if (isSpecificTime(raw)) return true;
+  if (detectTimePreference(raw)) return true;
+  return false;
+}
+
+/** Accept the pending offer only when the turn is pure acceptance (no alternate slot request). */
+function shouldAcceptOfferedCallbackSlot(text) {
+  if (!isScheduleOfferAcceptance(text)) return false;
+  if (utteranceRequestsDifferentCallbackSlot(text)) return false;
+  return true;
+}
+
 
 
 
@@ -8643,7 +8661,7 @@ async function handlePrompt(ws, caller, speech) {
         return;
       }
 
-      if (isScheduleOfferAcceptance(text)) {
+      if (shouldAcceptOfferedCallbackSlot(text)) {
         if (!isAllowedCallbackStartTime(caller.pendingOfferedTime)) {
           caller.pendingLateDayDate = caller.pendingOfferedDate || caller.requestedDate || "";
           caller.lastStep = "late_day_preference_choice";
@@ -8691,7 +8709,10 @@ async function handlePrompt(ws, caller, speech) {
       if (AI_INTERPRETER_ENABLED) {
         const schedulingDecision = await safeAIInterpret("AI SCHEDULING", interpretSchedulingStep, text, buildAIContext(caller));
         if (schedulingDecision && schedulingDecision.intent && schedulingDecision.intent !== "unclear") {
-          if (schedulingDecision.intent === "accept_offered_time") {
+          if (
+            schedulingDecision.intent === "accept_offered_time" &&
+            !utteranceRequestsDifferentCallbackSlot(text)
+          ) {
             if (!isAllowedCallbackStartTime(caller.pendingOfferedTime)) {
               caller.pendingLateDayDate = caller.pendingOfferedDate || caller.requestedDate || "";
               caller.lastStep = "late_day_preference_choice";
@@ -8795,7 +8816,7 @@ async function handlePrompt(ws, caller, speech) {
 
 
 
-      if (isAffirmative(text)) {
+      if (shouldAcceptOfferedCallbackSlot(text)) {
         caller.appointmentDate = caller.pendingOfferedDate;
         caller.appointmentTime = caller.pendingOfferedTime;
         caller.status = "scheduled";
@@ -9524,6 +9545,38 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   }
 
   console.log(`\nPassed ${passed} of ${cases.length} wrap-up cases.`);
+  process.exit(passed === cases.length ? 0 : 1);
+}
+
+if (process.env.BLUE_CALLER_TEST_SCHEDULE_SLOT_CHANGE === "1") {
+  const casesPath = path.join(__dirname, "schedule_slot_change_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load schedule_slot_change_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  let passed = 0;
+  for (const tc of cases) {
+    const gotDifferent = utteranceRequestsDifferentCallbackSlot(tc.text);
+    const gotAccept = shouldAcceptOfferedCallbackSlot(tc.text);
+    const expectDifferent = Boolean(tc.expect_different_slot);
+    const expectAccept = Boolean(tc.expect_accept);
+    const ok = gotDifferent === expectDifferent && gotAccept === expectAccept;
+    if (ok) {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    } else {
+      console.log(`FAIL  ${tc.name}`);
+      console.log(
+        `  - accept=${gotAccept}/${expectAccept} different_slot=${gotDifferent}/${expectDifferent} text=${JSON.stringify(tc.text)}`
+      );
+    }
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} schedule-slot-change cases.`);
   process.exit(passed === cases.length ? 0 : 1);
 }
 
