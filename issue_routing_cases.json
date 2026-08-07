@@ -1,0 +1,74 @@
+[
+  {
+    "name": "demo_phrase_with_burst_pipe_is_emergency",
+    "text": "interested in your service but I have a burst pipe",
+    "expect_lead_type": "emergency",
+    "expect_emergency": true
+  },
+  {
+    "name": "virtual_receptionist_with_burst_pipe_is_emergency",
+    "text": "virtual receptionist service but I have a burst pipe",
+    "expect_lead_type": "emergency",
+    "expect_emergency": true
+  },
+  {
+    "name": "demo_phrase_with_leaking_pipe_is_service",
+    "text": "interested in the service for my leaking pipe",
+    "expect_lead_type": "service",
+    "expect_emergency": false
+  },
+  {
+    "name": "how_service_works_with_overflowing_toilet_is_service",
+    "text": "how does your service work if my toilet is overflowing",
+    "expect_lead_type": "service",
+    "expect_emergency": false
+  },
+  {
+    "name": "pure_demo_request_stays_demo",
+    "text": "I'd like to schedule a demo of your AI receptionist service",
+    "expect_lead_type": "demo",
+    "expect_emergency": false
+  },
+  {
+    "name": "bidet_clog_is_service_not_quote",
+    "text": "my bidet is clogged",
+    "expect_lead_type": "service",
+    "expect_emergency": false
+  },
+  {
+    "name": "real_bid_for_remodel_is_quote",
+    "text": "I need a bid for a bathroom remodel",
+    "expect_lead_type": "quote",
+    "expect_emergency": false
+  },
+  {
+    "name": "brand_new_dishwasher_wont_start_is_service",
+    "text": "brand new dishwasher won't start",
+    "expect_lead_type": "service",
+    "expect_emergency": false
+  },
+  {
+    "name": "replace_faucet_cartridge_is_service",
+    "text": "can you replace the cartridge in my faucet",
+    "expect_lead_type": "service",
+    "expect_emergency": false
+  },
+  {
+    "name": "new_dishwasher_installation_is_quote",
+    "text": "I need a new dishwasher installation",
+    "expect_lead_type": "quote",
+    "expect_emergency": false
+  },
+  {
+    "name": "no_water_heater_is_not_emergency",
+    "text": "I have no water heater",
+    "expect_lead_type": "service",
+    "expect_emergency": false
+  },
+  {
+    "name": "house_has_no_water_is_emergency",
+    "text": "we have no water in the house",
+    "expect_lead_type": "emergency",
+    "expect_emergency": true
+  }
+]
