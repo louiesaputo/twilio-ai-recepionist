@@ -3722,6 +3722,14 @@ function isDemoIntent(text) {
   ]);
 }
 
+/** True when the utterance also describes a live trade job (not a pure product demo). */
+function utteranceDescribesActiveTradeIssue(text) {
+  if (!text) return false;
+  if (isHardEmergency(text) || isLeakLikeIssue(text) || hasSpecificProblemDetail(text)) return true;
+  const t = normalizedText(text);
+  return /\b(my|our)\s+(toilet|faucet|sink|water heater|drain|drains|pipe|pipes|shower|tub|ceiling|basement|dishwasher|refrigerator|fridge|washer|dryer|stove|oven|range|cooktop|microwave)\b/.test(t);
+}
+
 
 
 
@@ -3731,8 +3739,15 @@ function isDemoIntent(text) {
 
 function isQuoteIntent(text) {
   const t = normalizedText(text);
-  if (containsAny(t, ["quote", "estimate", "proposal", "bid"])) return true;
+  if (containsAny(t, ["quote", "estimate", "proposal"])) return true;
+  // Word-boundary: bare "bid" must not match inside "bidet".
+  if (/\bbids?\b/.test(t)) return true;
   if (containsAny(t, ["remodel", "remodeling", "renovation", "renovating", "reno", "renos"])) return true;
+  // Repair language (won't start, clogged, cartridge swap, etc.) is service — not a project quote.
+  if (hasSpecificProblemDetail(text)) return false;
+  if (containsAny(t, [
+    "cartridge", "aerator", "flapper", "gasket", "o ring", "oring", "o-ring", "fill valve", "supply line"
+  ])) return false;
   if (containsAny(t, ["install", "installation", "replace", "replacement", "new"]) && containsAny(t, [
     "appliance", "refrigerator", "fridge", "dishwasher", "stove", "oven", "range", "cooktop",
     "washer", "dryer", "microwave", "garbage disposal", "water heater", "toilet", "faucet"
@@ -4704,12 +4719,22 @@ function isOutsideWaterLossEmergency(text) {
 
 
 
+/** Whole-house water outage — not "no water heater" / softener / filter equipment phrases. */
+function isNoWaterServiceOutage(text) {
+  const t = normalizedText(text);
+  if (!t.includes("no water")) return false;
+  if (/\bno\s+water\s+(heater|heaters|softener|softeners|filter|filters|filtration|pump|pumps|tank|tanks)\b/.test(t)) {
+    return false;
+  }
+  return true;
+}
+
 function isHardEmergency(text) {
   const t = normalizedText(text);
   return containsAny(t, [
-    "burst", "burst pipe", "flooding", "flooded", "sewer", "sewage", "gas leak", "no water",
+    "burst", "burst pipe", "flooding", "flooded", "sewer", "sewage", "gas leak",
     "gushing", "pouring", "water everywhere", "water coming through the ceiling", "ceiling pouring", "water is pouring"
-  ]) || isMainLineEmergencyCandidate(t) || isOutsideWaterLossEmergency(t);
+  ]) || isNoWaterServiceOutage(t) || isMainLineEmergencyCandidate(t) || isOutsideWaterLossEmergency(t);
 }
 
 
@@ -4779,7 +4804,7 @@ function classifyIssue(issue) {
   if (containsAny(text, ["burst pipe"])) return { summary: "a burst pipe" };
   if (containsAny(text, ["sewer", "sewage"])) return { summary: "a sewer backup" };
   if (containsAny(text, ["gas leak"])) return { summary: "a gas leak" };
-  if (containsAny(text, ["no water"])) return { summary: "no water service" };
+  if (isNoWaterServiceOutage(text)) return { summary: "no water service" };
   if (containsAny(text, ["leak", "leaking", "drip", "dripping"])) return { summary: "a water leak" };
   return { summary: buildUnknownIssueSummary(issue) };
 }
@@ -6599,26 +6624,22 @@ function afterIssueCaptured(caller) {
     caller.issueIsCapabilityQuestion = true;
   }
 
+  // Hard emergencies must win over demo/quote marketing phrases in the same turn.
+  if (isHardEmergency(caller.issue)) {
+    caller.issueSummary = caller.issueIsCapabilityQuestion
+      ? buildCapabilityIssueSummary(caller.issue)
+      : classifyIssue(caller.issue).summary;
+    markEmergency(caller);
+    return;
+  }
 
-
-
-
-
-
-
-  if (isDemoIntent(caller.issue)) {
+  // Demo phrases mixed with a live trade problem should stay service intake.
+  if (isDemoIntent(caller.issue) && !utteranceDescribesActiveTradeIssue(caller.issue)) {
     caller.leadType = "demo";
     caller.status = "demo_request";
     caller.issueSummary = "demo request";
     return;
   }
-
-
-
-
-
-
-
 
   if (isQuoteIntent(caller.issue)) {
     caller.leadType = "quote";
@@ -6630,11 +6651,6 @@ function afterIssueCaptured(caller) {
     return;
   }
 
-  if (isHardEmergency(caller.issue)) {
-    markEmergency(caller);
-    return;
-  }
-
   if (caller.issueIsCapabilityQuestion) {
     caller.issueSummary = buildCapabilityIssueSummary(caller.issue);
   } else {
@@ -6642,11 +6658,6 @@ function afterIssueCaptured(caller) {
   }
   markStandardService(caller);
 }
-
-
-
-
-
 
 
 
@@ -9524,6 +9535,54 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   }
 
   console.log(`\nPassed ${passed} of ${cases.length} wrap-up cases.`);
+  process.exit(passed === cases.length ? 0 : 1);
+}
+
+
+if (process.env.BLUE_CALLER_TEST_ISSUE_ROUTING === "1") {
+  const casesPath = path.join(__dirname, "issue_routing_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load issue_routing_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  let passed = 0;
+  for (const tc of cases) {
+    const caller = {
+      issue: tc.text,
+      leadType: "service",
+      emergencyAlert: false,
+      urgency: "normal",
+      status: "new_lead",
+      issueSummary: "",
+      projectType: "",
+      issueIsCapabilityQuestion: false
+    };
+    afterIssueCaptured(caller);
+    const expectLead = tc.expect_lead_type;
+    const expectEmergency = Boolean(tc.expect_emergency);
+    const leadOk = caller.leadType === expectLead;
+    const emergencyOk = Boolean(caller.emergencyAlert) === expectEmergency;
+    if (leadOk && emergencyOk) {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    } else {
+      console.log(`FAIL  ${tc.name}`);
+      if (!leadOk) {
+        console.log(`  - expected leadType=${expectLead} but got ${caller.leadType}`);
+      }
+      if (!emergencyOk) {
+        console.log(`  - expected emergencyAlert=${expectEmergency} but got ${caller.emergencyAlert}`);
+      }
+      console.log(`  - text: ${JSON.stringify(tc.text)}`);
+      console.log(`  - issueSummary: ${JSON.stringify(caller.issueSummary)}`);
+    }
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} issue-routing cases.`);
   process.exit(passed === cases.length ? 0 : 1);
 }
 
