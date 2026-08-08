@@ -1,0 +1,50 @@
+[
+  {
+    "name": "hyphenated_name_calling_about_leak",
+    "text": "this is Mary-Anne O'Brien calling about a leak",
+    "expect_name": "Mary-anne O'brien",
+    "expect_issue_includes": "leak"
+  },
+  {
+    "name": "hyphenated_name_calling_about_leak_with_period",
+    "text": "this is Mary-Anne O'Brien calling about a leak.",
+    "expect_name": "Mary-anne O'brien",
+    "expect_issue_includes": "leak"
+  },
+  {
+    "name": "name_and_im_calling_about_flooding",
+    "text": "my name is Robert Lee and I'm calling about flooding",
+    "expect_name": "Robert Lee",
+    "expect_issue_includes": "flood"
+  },
+  {
+    "name": "name_and_i_am_calling_about_flooding",
+    "text": "my name is Robert Lee and I am calling about flooding",
+    "expect_name": "Robert Lee",
+    "expect_issue_includes": "flood"
+  },
+  {
+    "name": "name_comma_im_calling_about_burst_pipe",
+    "text": "my name is Jane Doe, I'm calling about a burst pipe",
+    "expect_name": "Jane Doe",
+    "expect_issue_includes": "burst pipe"
+  },
+  {
+    "name": "greeting_this_is_name_calling_about_ac",
+    "text": "Hi, this is Sarah calling about my AC not working",
+    "expect_name": "Sarah",
+    "expect_issue_includes": "ac not working"
+  },
+  {
+    "name": "name_and_i_have_leaking_faucet",
+    "text": "this is John Smith and I have a leaking faucet",
+    "expect_name": "John Smith",
+    "expect_issue_includes": "leaking faucet"
+  },
+  {
+    "name": "name_only_intro",
+    "text": "my name is Alice",
+    "expect_name": "Alice",
+    "expect_issue_includes": ""
+  }
+]

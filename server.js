@@ -546,13 +546,14 @@ function normalizeNameCandidate(rawName) {
   const cleaned = (nameCandidate || cleanedName).toLowerCase();
   const stopWords = new Set([
     "and", "i", "have", "need", "calling", "about", "with", "for", "regarding",
-    "because", "alex", "my", "name", "is", "this", "am", "im", "hi", "hello", "hey"
+    "because", "alex", "my", "name", "is", "this", "am", "im", "i'm", "hi", "hello", "hey"
   ]);
   const blockedNameWords = new Set([
     "not", "no", "issue", "problem", "service", "schedule", "scheduling", "appointment",
-    "someone", "heating", "cooling", "draining", "working", "broken", "leaking",
-    "stove", "oven", "range", "cooktop", "dishwasher", "refrigerator", "washer",
-    "dryer", "microwave", "faucet", "sink", "toilet"
+    "someone", "heating", "cooling", "draining", "working", "broken", "leaking", "leak",
+    "flood", "flooding", "burst", "pipe", "clog", "clogged", "smoke", "smoking",
+    "emergency", "urgent", "stove", "oven", "range", "cooktop", "dishwasher",
+    "refrigerator", "washer", "dryer", "microwave", "faucet", "sink", "toilet"
   ]);
 
 
@@ -601,6 +602,40 @@ function parseFullNameFromSpeech(rawName) {
   return normalizeNameCandidate(rawName);
 }
 
+function isIssueLikeNameCapture(rawCapture) {
+  const capture = cleanForSpeech(rawCapture || "");
+  if (!capture) return true;
+  if (/^(?:calling|having|looking|trying|interested)\b/i.test(capture)) return true;
+  if (looksLikeIssueText(capture) || detectServiceItem(capture) || hasSpecificProblemDetail(capture)) return true;
+  const sliced = sliceIntroNameBeforeIssue(capture);
+  const normalizedCapture = capture.replace(/[,.]+$/g, "").trim();
+  return Boolean(sliced && sliced.length < normalizedCapture.length);
+}
+
+function parseNameCaptureWithOptionalEmbeddedIssue(rawCapture, remainder, tryIssueCleanup) {
+  const raw = cleanForSpeech(rawCapture || "");
+  if (!raw) return null;
+
+  const normalizedRaw = raw.replace(/[,.]+$/g, "").trim();
+  const nameSeg = sliceIntroNameBeforeIssue(normalizedRaw);
+  const possibleName = normalizeNameCandidate(nameSeg || normalizedRaw);
+  if (!possibleName) return null;
+
+  const companyName = extractCompanyNameFromSpeech(nameSeg || normalizedRaw);
+  if (nameSeg && nameSeg.length < normalizedRaw.length) {
+    const issuePortion = normalizedRaw.slice(nameSeg.length).replace(/^[\s,.!?-]+/, "");
+    const issueText = tryIssueCleanup(issuePortion);
+    if (issueText) return { name: possibleName, companyName, issueText };
+  }
+
+  if (remainder) {
+    const issueText = tryIssueCleanup(remainder);
+    if (issueText) return { name: possibleName, companyName, issueText };
+  }
+
+  return { name: possibleName, companyName, issueText: "" };
+}
+
 function splitIssueAndTrailingName(text) {
   const safe = cleanForSpeech(text || "");
   if (!safe) return null;
@@ -614,6 +649,9 @@ function splitIssueAndTrailingName(text) {
   for (const pattern of trailingNamePatterns) {
     const match = socialStripped.match(pattern);
     if (!match) continue;
+
+    // Reject "and I'm calling about flooding" style false trailing identities.
+    if (isIssueLikeNameCapture(match[2])) continue;
 
     const issueCandidate = stripIssueLeadIn(cleanForSpeech(match[1] || ""));
     const possibleName = normalizeNameCandidate(match[2]);
@@ -649,13 +687,15 @@ function extractStrongLocalNameAndIssue(text) {
   ];
 
   const nameAndIssuePatterns = [
-    /^(?:this is|my name is|i am|i'm)\s+([A-Za-z' -]+?)\s*(?:,\s*|\s+and\s+)(?:i\s+have|i've\s+got|i\s+need|i\s+am\s+having|i'm\s+having)\s+(.+)$/i,
+    /^(?:this is|my name is|i am|i'm)\s+([A-Za-z' -]+?)\s+calling\s+(?:about|regarding)\s+(.+)$/i,
+    /^(?:this is|my name is|i am|i'm)\s+([A-Za-z' -]+?)\s*(?:,\s*|\s+and\s+)(?:i\s+have|i've\s+got|i\s+need|i\s+am\s+having|i'm\s+having|i\s+was\s+calling\s+about|i\s+am\s+calling\s+about|i'm\s+calling\s+about)\s+(.+)$/i,
     /^(?:this is|my name is|i am|i'm)\s+([A-Za-z' -]+?)\s*[,.!?-]*\s*i\s+need\s+someone\s+(.+)$/i,
     /^(?:this is|my name is|i am|i'm)\s+([A-Za-z' -]+?)\s*[,.!?-]*\s*i\s+need\s+somebody\s+(.+)$/i,
-    /^(?:this is|my name is|i am|i'm)\s+([A-Za-z' -]+?)\s*[,.!?-]*\s*(?:i\s+have|i've\s+got|i\s+need|i\s+am\s+having|i'm\s+having)\s+(.+)$/i,
+    /^(?:this is|my name is|i am|i'm)\s+([A-Za-z' -]+?)\s*[,.!?-]*\s*(?:i\s+have|i've\s+got|i\s+need|i\s+am\s+having|i'm\s+having|i\s+was\s+calling\s+about|i\s+am\s+calling\s+about|i'm\s+calling\s+about)\s+(.+)$/i,
+    /^([A-Za-z' -]+?)\s+here\s+calling\s+(?:about|regarding)\s+(.+)$/i,
     /^([A-Za-z' -]+?)\s+here\s*(?:,\s*|\s+-\s*|\s+)(?:i\s+have|i've\s+got|i\s+need|i\s+am\s+having|i'm\s+having)\s+(.+)$/i,
-    /^(?:call me)\s+([A-Za-z' -]+?)\s*(?:,\s*|\s+and\s+)(?:i\s+have|i've\s+got|i\s+need|i\s+am\s+having|i'm\s+having)\s+(.+)$/i,
-    /^(?:call me)\s+([A-Za-z' -]+?)\s*[,.!?-]*\s*(?:i\s+have|i've\s+got|i\s+need|i\s+am\s+having|i'm\s+having)\s+(.+)$/i
+    /^(?:call me)\s+([A-Za-z' -]+?)\s*(?:,\s*|\s+and\s+)(?:i\s+have|i've\s+got|i\s+need|i\s+am\s+having|i'm\s+having|i\s+was\s+calling\s+about|i\s+am\s+calling\s+about|i'm\s+calling\s+about)\s+(.+)$/i,
+    /^(?:call me)\s+([A-Za-z' -]+?)\s*[,.!?-]*\s*(?:i\s+have|i've\s+got|i\s+need|i\s+am\s+having|i'm\s+having|i\s+was\s+calling\s+about|i\s+am\s+calling\s+about|i'm\s+calling\s+about)\s+(.+)$/i
   ];
 
   const tryIssueCleanup = (value) => stripIssueLeadIn(cleanForSpeech(value || ""));
@@ -664,33 +704,25 @@ function extractStrongLocalNameAndIssue(text) {
   for (const pattern of nameAndIssuePatterns) {
     const match = joined.match(pattern);
     if (!match) continue;
-    const possibleName = normalizeNameCandidate(match[1]);
+    const nameSeg = sliceIntroNameBeforeIssue(match[1]) || match[1];
+    const possibleName = normalizeNameCandidate(nameSeg);
     const issueText = tryIssueCleanup(match[2]);
     if (possibleName && issueText) {
       return {
         name: possibleName,
-        companyName: extractCompanyNameFromSpeech(match[1]),
+        companyName: extractCompanyNameFromSpeech(nameSeg),
         issueText
       };
     }
   }
 
-  if (sentenceParts.length >= 2) {
-    const first = sentenceParts[0];
-    const remainder = sentenceParts.slice(1).join(" ");
-    for (const pattern of nameOnlyPatterns) {
-      const match = first.match(pattern);
-      if (!match) continue;
-      const possibleName = normalizeNameCandidate(match[1]);
-      const issueText = tryIssueCleanup(remainder);
-      if (possibleName && issueText) {
-        return {
-          name: possibleName,
-          companyName: extractCompanyNameFromSpeech(match[1]),
-          issueText
-        };
-      }
-    }
+  const first = sentenceParts[0] || joined;
+  const remainder = sentenceParts.length >= 2 ? sentenceParts.slice(1).join(" ") : "";
+  for (const pattern of nameOnlyPatterns) {
+    const match = first.match(pattern);
+    if (!match) continue;
+    const parsed = parseNameCaptureWithOptionalEmbeddedIssue(match[1], remainder, tryIssueCleanup);
+    if (parsed && parsed.name && parsed.issueText) return parsed;
   }
 
   return null;
@@ -714,6 +746,8 @@ function sliceIntroNameBeforeIssue(rest) {
     /\s+and\s+i\s+need\b/i,
     /\s+and\s+i'?ve\s+got\b/i,
     /\s+and\s+i'?m\s+having\b/i,
+    /\s+and\s+i'?m\b/i,
+    /\s+and\s+i\s+am\b/i,
     /\s+i\s+need\s+someone\b/i,
     /\s+i\s+need\s+somebody\b/i,
     /\s+need\s+someone\b/i,
@@ -878,6 +912,12 @@ function stripIssueLeadIn(text) {
     .replace(/^somebody\s+to\s+(come\s+)?look\s+at\s+/i, "")
     .replace(/^come\s+look\s+at\s+/i, "")
     .replace(/^come\s+check\s+/i, "")
+    .replace(/^(and\s+)?i\'?m\s+calling\s+about\s+/i, "")
+    .replace(/^(and\s+)?i\s+am\s+calling\s+about\s+/i, "")
+    .replace(/^(and\s+)?i\s+was\s+calling\s+about\s+/i, "")
+    .replace(/^(and\s+)?i\'?m\s+calling\s+regarding\s+/i, "")
+    .replace(/^(and\s+)?i\s+am\s+calling\s+regarding\s+/i, "")
+    .replace(/^(and\s+)?i\s+was\s+calling\s+regarding\s+/i, "")
     .replace(/^calling\s+about\s+/i, "")
     .replace(/^calling\s+with\s+/i, "")
     .replace(/^calling\s+for\s+/i, "")
@@ -1018,7 +1058,8 @@ function looksLikeIssueText(text) {
   const t = normalizedText(text || "");
   return Boolean(
     t && (
-      t.startsWith("my ") ||
+      // "my name is …" is an identity intro, not an issue description.
+      (t.startsWith("my ") && !t.startsWith("my name")) ||
       t.startsWith("the ") ||
       t.startsWith("our ") ||
       t.includes(" not ") ||
@@ -1033,6 +1074,8 @@ function looksLikeIssueText(text) {
       t.includes("noise") ||
       t.includes("problem") ||
       t.includes("issue") ||
+      t.includes("flood") ||
+      t.includes("burst") ||
       t.includes("refrigerator") ||
       t.includes("fridge") ||
       t.includes("freezer") ||
@@ -1142,10 +1185,12 @@ function extractOpeningNameAndIssue(text) {
 
 
   const nameAndIssuePatterns = [
+    /^(?:this is|my name is|i am|i'm)\s+([a-zA-Z' -]+?)\s+calling\s+(?:about|regarding)\s+(.+)$/i,
     /^(?:this is|my name is|i am|i'm)\s+([a-zA-Z' -]+?)\s*(?:,\s*|\s+and\s+)(.+)$/i,
     /^(?:this is|my name is|i am|i'm)\s+([a-zA-Z' -]+?)\s*[,.!?-]*\s*i\s+need\s+someone\s+(.+)$/i,
     /^(?:this is|my name is|i am|i'm)\s+([a-zA-Z' -]+?)\s*[,.!?-]*\s*i\s+need\s+somebody\s+(.+)$/i,
     /^(?:this is|my name is|i am|i'm)\s+([a-zA-Z' -]+?)\s*[,.!?-]*\s*(?:i\s+have|i've\s+got|i\s+need|i\s+am\s+having|i'm\s+having|i\s+was\s+calling\s+about|i\s+am\s+calling\s+about|i'm\s+calling\s+about)\s+(.+)$/i,
+    /^([a-zA-Z' -]+?)\s+here\s+calling\s+(?:about|regarding)\s+(.+)$/i,
     /^([a-zA-Z' -]+?)\s+here\s*(?:,\s*|\s+-\s*|\s+)(.+)$/i,
     /^(?:call me)\s+([a-zA-Z' -]+?)\s*(?:,\s*|\s+and\s+)(.+)$/i,
     /^(?:call me)\s+([a-zA-Z' -]+?)\s*[,.!?-]*\s*(?:i\s+have|i've\s+got|i\s+need|i\s+am\s+having|i'm\s+having|i\s+was\s+calling\s+about|i\s+am\s+calling\s+about|i'm\s+calling\s+about)\s+(.+)$/i
@@ -1178,8 +1223,9 @@ function extractOpeningNameAndIssue(text) {
     for (const pattern of nameAndIssuePatterns) {
       const match = first.match(pattern);
       if (!match) continue;
-      const possibleName = normalizeNameCandidate(match[1]);
-      const companyName = extractCompanyNameFromSpeech(match[1]);
+      const nameSeg = sliceIntroNameBeforeIssue(match[1]) || match[1];
+      const possibleName = normalizeNameCandidate(nameSeg);
+      const companyName = extractCompanyNameFromSpeech(nameSeg);
       const issueText = tryIssueCleanup(match[2]);
       if (possibleName && issueText) return { name: possibleName, companyName, issueText };
     }
@@ -1193,18 +1239,9 @@ function extractOpeningNameAndIssue(text) {
     for (const pattern of nameOnlyPatterns) {
       const match = first.match(pattern);
       if (!match) continue;
-      const possibleName = normalizeNameCandidate(match[1]);
-      if (!possibleName) continue;
-
-
-
-
-
-
-
       const remainder = sentenceParts.slice(1).join(" ");
-      if (remainder) return { name: possibleName, issueText: tryIssueCleanup(remainder) };
-      return { name: possibleName, issueText: "" };
+      const parsed = parseNameCaptureWithOptionalEmbeddedIssue(match[1], remainder, tryIssueCleanup);
+      if (parsed && parsed.name) return parsed;
     }
 
 
@@ -1239,11 +1276,12 @@ function extractOpeningNameAndIssue(text) {
       for (const pattern of nameAndIssuePatterns) {
         const match = part.match(pattern);
         if (!match) continue;
-        const possibleName = normalizeNameCandidate(match[1]);
+        const nameSeg = sliceIntroNameBeforeIssue(match[1]) || match[1];
+        const possibleName = normalizeNameCandidate(nameSeg);
         const candidateIssueText = tryIssueCleanup(match[2]);
         if (!possibleName) continue;
         issueFirstName = issueFirstName || possibleName;
-        issueFirstCompanyName = issueFirstCompanyName || extractCompanyNameFromSpeech(match[1]);
+        issueFirstCompanyName = issueFirstCompanyName || extractCompanyNameFromSpeech(nameSeg);
         if (!issueFirstIssueText && issueLooksSpecificEnough(candidateIssueText)) {
           issueFirstIssueText = candidateIssueText;
         }
@@ -1253,10 +1291,13 @@ function extractOpeningNameAndIssue(text) {
       for (const pattern of nameOnlyPatterns) {
         const match = part.match(pattern);
         if (!match) continue;
-        const possibleName = normalizeNameCandidate(match[1]);
-        if (!possibleName) continue;
-        issueFirstName = issueFirstName || possibleName;
-        issueFirstCompanyName = issueFirstCompanyName || extractCompanyNameFromSpeech(match[1]);
+        const parsed = parseNameCaptureWithOptionalEmbeddedIssue(match[1], "", tryIssueCleanup);
+        if (!parsed || !parsed.name) continue;
+        issueFirstName = issueFirstName || parsed.name;
+        issueFirstCompanyName = issueFirstCompanyName || parsed.companyName || "";
+        if (!issueFirstIssueText && parsed.issueText && issueLooksSpecificEnough(parsed.issueText)) {
+          issueFirstIssueText = parsed.issueText;
+        }
         break;
       }
 
@@ -9524,6 +9565,47 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   }
 
   console.log(`\nPassed ${passed} of ${cases.length} wrap-up cases.`);
+  process.exit(passed === cases.length ? 0 : 1);
+}
+
+if (process.env.BLUE_CALLER_TEST_OPENING_NAME === "1") {
+  const casesPath = path.join(__dirname, "opening_name_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load opening_name_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  const namesMatch = (got, expect) => String(got || "").toLowerCase() === String(expect || "").toLowerCase();
+  const issueIncludes = (got, expect) => {
+    const needle = String(expect || "").trim().toLowerCase();
+    const hay = String(got || "").toLowerCase();
+    return needle ? hay.includes(needle) : hay === "";
+  };
+
+  let passed = 0;
+  for (const tc of cases) {
+    const strong = extractStrongLocalNameAndIssue(tc.text);
+    const open = extractOpeningNameAndIssue(tc.text);
+    const parsed = strong && strong.name && strong.issueText ? strong : open;
+    const gotName = parsed && parsed.name ? parsed.name : "";
+    const gotIssue = parsed && parsed.issueText ? parsed.issueText : "";
+    const nameOk = namesMatch(gotName, tc.expect_name);
+    const issueOk = issueIncludes(gotIssue, tc.expect_issue_includes);
+    const nameLooksCorrupted = /\b(leak|flood|flooding|burst|pipe|clog|clogged)\b/i.test(gotName);
+    if (nameOk && issueOk && !nameLooksCorrupted) {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    } else {
+      console.log(`FAIL  ${tc.name}`);
+      console.log(`  - expected name=${JSON.stringify(tc.expect_name)} issue_includes=${JSON.stringify(tc.expect_issue_includes)}`);
+      console.log(`  - got name=${JSON.stringify(gotName)} issue=${JSON.stringify(gotIssue)}`);
+    }
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} opening-name cases.`);
   process.exit(passed === cases.length ? 0 : 1);
 }
 
