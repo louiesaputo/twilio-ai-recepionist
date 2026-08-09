@@ -1,0 +1,86 @@
+[
+  {
+    "name": "address_digit_soup_street_and_zip",
+    "text": "123 Main Street Columbus OH 43215",
+    "expect_digits": "",
+    "expect_likely": false,
+    "expect_stored": "123 Main Street Columbus OH 43215"
+  },
+  {
+    "name": "address_ten_digit_street_plus_zip_soup",
+    "text": "12345 Oak Avenue Columbus OH 43215",
+    "expect_digits": "",
+    "expect_likely": false,
+    "expect_stored": "12345 Oak Avenue Columbus OH 43215"
+  },
+  {
+    "name": "seven_digit_local",
+    "text": "555-1212",
+    "expect_digits": "",
+    "expect_likely": false,
+    "expect_stored": ""
+  },
+  {
+    "name": "seven_digit_local_glued",
+    "text": "5551212",
+    "expect_digits": "",
+    "expect_likely": false,
+    "expect_stored": ""
+  },
+  {
+    "name": "lake_street_address_rejected",
+    "text": "90 Lake Street Columbus OH 43215",
+    "expect_digits": "",
+    "expect_likely": false,
+    "expect_stored": "90 Lake Street Columbus OH 43215"
+  },
+  {
+    "name": "plain_ten_digit",
+    "text": "404-555-1212",
+    "expect_digits": "4045551212",
+    "expect_likely": true,
+    "expect_stored": "4045551212"
+  },
+  {
+    "name": "leading_country_code",
+    "text": "1-404-555-1212",
+    "expect_digits": "4045551212",
+    "expect_likely": true,
+    "expect_stored": "4045551212"
+  },
+  {
+    "name": "spaced_nanp_groups",
+    "text": "my number is 404 555 1212",
+    "expect_digits": "4045551212",
+    "expect_likely": true,
+    "expect_stored": "4045551212"
+  },
+  {
+    "name": "phone_with_street_mention_keeps_grouped_nanp",
+    "text": "404-555-1212 on Main Street",
+    "expect_digits": "4045551212",
+    "expect_likely": true,
+    "expect_stored": "4045551212"
+  },
+  {
+    "name": "spoken_ten_digits",
+    "text": "four zero four five five five one two one two",
+    "expect_digits": "4045551212",
+    "expect_likely": true,
+    "expect_stored": "4045551212"
+  },
+  {
+    "name": "address_then_correction_to_phone",
+    "text": "sorry that was my address, I meant 404-555-1212",
+    "expect_digits": "4045551212",
+    "expect_likely": true,
+    "expect_stored": "4045551212"
+  },
+  {
+    "name": "parenthetical_nanp",
+    "text": "(770) 555-0199",
+    "expect_digits": "7705550199",
+    "expect_likely": true,
+    "expect_stored": "7705550199"
+  }
+]

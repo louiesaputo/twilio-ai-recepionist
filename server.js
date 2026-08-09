@@ -2523,7 +2523,31 @@ function extractPhoneDigitsFromSpokenTokensOnly(raw) {
     return "";
   }
 
-  return recognizedCount >= 7 ? digits : "";
+  return recognizedCount >= 10 ? digits : "";
+}
+
+function nanpTenFromGroupedRuns(runs) {
+  if (!Array.isArray(runs) || !runs.length) return "";
+
+  // Trailing 3-3-4 (optionally prefixed by country code 1).
+  if (runs.length >= 3) {
+    const a = runs[runs.length - 3];
+    const b = runs[runs.length - 2];
+    const c = runs[runs.length - 1];
+    if (a.length === 3 && b.length === 3 && c.length === 4) {
+      if (runs.length >= 4 && runs[runs.length - 4] === "1") return `${a}${b}${c}`;
+      return `${a}${b}${c}`;
+    }
+  }
+
+  // Trailing 1 + 10-digit glued run.
+  if (runs.length >= 2) {
+    const lead = runs[runs.length - 2];
+    const tail = runs[runs.length - 1];
+    if (lead === "1" && tail.length === 10) return tail;
+  }
+
+  return "";
 }
 
 /** Prefer separated digit groups (street number … phone) or NANP-ish tail of a glued run; no whole-utterance digit merge here. */
@@ -2537,6 +2561,9 @@ function canonicalNanpDigitRunFromSegment(seg) {
     if (r.length === 11 && r.startsWith("1")) return r.slice(1);
     if (r.length === 10) return r;
   }
+
+  const grouped = nanpTenFromGroupedRuns(runs);
+  if (grouped.length === 10) return grouped;
 
   if (runs.length === 1) {
     const r = runs[0];
@@ -2585,17 +2612,25 @@ function extractPhoneDigits(text) {
 
   for (const seg of segments) {
     const spoken = extractPhoneDigitsFromSpokenTokensOnly(seg);
-    if (!spoken || spoken.length < 7) continue;
+    if (!spoken) continue;
     let d = spoken.replace(/\D/g, "");
     if (!d.length) continue;
     if (d.length === 11 && d.startsWith("1")) d = d.slice(1);
-    if (d.length >= 7) return d;
+    // Require a full NANP number; 7–9 digit locals/partials are not callable callbacks.
+    if (d.length === 10) return d;
   }
 
   const numericDigits = raw.replace(/\D/g, "");
   const correctedFocusApplied = normalizedText(focused) !== normalizedText(raw);
+  const addressLike = looksLexicallyLikeAddressFragmentNearDigits(raw);
 
-  if (numericDigits.length >= 7 && numericDigits.length <= 11) return numericDigits;
+  // Whole-utterance digit soup (street number + ZIP, etc.) must not become a fake callback.
+  // Allow only exact 10-digit / 1+10 NANP aggregates when the utterance is not address-like,
+  // unless the caller explicitly corrected away from an address fragment.
+  if (!addressLike || correctedFocusApplied) {
+    if (numericDigits.length === 10) return numericDigits;
+    if (numericDigits.length === 11 && numericDigits.startsWith("1")) return numericDigits.slice(1);
+  }
 
   const tailCanon = canonicalNanpDigitRunFromSegment(focused);
   if (tailCanon.length === 10) return tailCanon;
@@ -2603,16 +2638,17 @@ function extractPhoneDigits(text) {
   if (
     numericDigits.length >= 12 &&
     numericDigits.length <= 15 &&
-    (!looksLexicallyLikeAddressFragmentNearDigits(raw) || correctedFocusApplied)
+    (!addressLike || correctedFocusApplied)
   ) {
-    return numericDigits.slice(-10);
+    const sliced = numericDigits.slice(-10);
+    if (sliced.length === 10) return sliced;
   }
 
   const tailSpoken = extractPhoneDigitsFromSpokenTokensOnly(focused);
-  if (tailSpoken.length >= 7) {
+  if (tailSpoken) {
     let d = tailSpoken.replace(/\D/g, "");
     if (d.length === 11 && d.startsWith("1")) d = d.slice(1);
-    return d;
+    if (d.length === 10) return d;
   }
 
   return "";
@@ -2624,9 +2660,9 @@ function extractPhoneDigits(text) {
 
 
 
-
 function isLikelyPhoneNumberResponse(text) {
-  return extractPhoneDigits(text).length >= 7;
+  // Align with callerHasReachablePhoneDigits / tryHarvestPhoneFromUtterance: only full NANP.
+  return extractPhoneDigits(text).length === 10;
 }
 
 
@@ -6807,22 +6843,33 @@ function normalizePhoneForStorage(value) {
   const brute = raw.replace(/\D/g, "");
 
   const correctedTail = normalizedText(extractPhoneCorrectionFocusTail(raw || "")) !== normalizedText(raw || "");
+  const addressLike = looksLexicallyLikeAddressFragmentNearDigits(raw);
 
-  if (!d && brute.length >= 7 && brute.length <= 11) {
-    if (!(brute.length > 10 && looksLexicallyLikeAddressFragmentNearDigits(raw))) {
-      d = brute;
-    }
+  // Only accept full NANP aggregates here. Partial 7–9 digit runs (and address digit-soup)
+  // previously became stored callback numbers and advanced intake/Make submit.
+  if (!d && !addressLike && brute.length === 10) {
+    d = brute;
+  }
+  if (!d && !addressLike && brute.length === 11 && brute.startsWith("1")) {
+    d = brute;
   }
 
   if (!d && brute.length >= 12 && brute.length <= 15) {
-    if (!looksLexicallyLikeAddressFragmentNearDigits(raw) || correctedTail) {
+    if (!addressLike || correctedTail) {
       d = brute.slice(-10);
     }
   }
 
-  if (!d) return cleanForSpeech(raw);
+  if (!d) {
+    // Pure short digit runs are incomplete callbacks, not storeable phone values.
+    if (!addressLike && brute.length >= 7 && brute.length <= 9) return "";
+    return cleanForSpeech(raw);
+  }
 
   if (d.length === 11 && d.startsWith("1")) return d.slice(1);
+  if (d.length === 10) return d;
+  // Do not persist partial local numbers as callback values.
+  if (d.length >= 7 && d.length <= 9) return "";
   if (d.length > 10) return d.slice(-10);
 
   return d;
@@ -9499,6 +9546,42 @@ wss.on("connection", (ws, request) => {
 
 
 
+
+if (process.env.BLUE_CALLER_TEST_PHONE_PARTIAL === "1") {
+  const casesPath = path.join(__dirname, "phone_partial_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load phone_partial_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  let passed = 0;
+  for (const tc of cases) {
+    const digits = extractPhoneDigits(tc.text);
+    const likely = isLikelyPhoneNumberResponse(tc.text);
+    const stored = normalizePhoneForStorage(tc.text);
+    const expectDigits = String(tc.expect_digits || "");
+    const expectLikely = Boolean(tc.expect_likely);
+    const expectStored = String(tc.expect_stored || "");
+    const ok =
+      digits === expectDigits &&
+      likely === expectLikely &&
+      stored === expectStored;
+    if (ok) {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    } else {
+      console.log(`FAIL  ${tc.name}`);
+      console.log(`  - expected digits=${JSON.stringify(expectDigits)} likely=${expectLikely} stored=${JSON.stringify(expectStored)}`);
+      console.log(`  - got      digits=${JSON.stringify(digits)} likely=${likely} stored=${JSON.stringify(stored)} for text: ${JSON.stringify(tc.text)}`);
+    }
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} phone-partial cases.`);
+  process.exit(passed === cases.length ? 0 : 1);
+}
 
 if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   const casesPath = path.join(__dirname, "wrap_up_cases.json");
