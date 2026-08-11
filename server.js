@@ -5133,9 +5133,10 @@ function resolveRequestedDateToSpokenDate(dateText) {
     if (qualifier === "this") {
       // keep delta as-is
     }
-    // "next Tuesday" should always be at least 7 days ahead.
+    // "next Tuesday" should always be at least 7 days ahead (the following week's occurrence).
+    // When today is already that weekday, that means +7 — not +14.
     if (qualifier === "next") {
-      delta = (delta === 0 ? 7 : delta) + 7;
+      delta = delta === 0 ? 7 : delta + 7;
     }
 
     const dt = new Date(todayUtc.getTime());
@@ -5164,6 +5165,36 @@ function resolveRequestedDateToSpokenDate(dateText) {
   return raw;
 }
 
+function phraseMeridiemHint(text) {
+  const t = normalizedText(text || "");
+  if (!t) return "";
+  if (containsAny(t, ["in the morning", "this morning", "early morning"])) return "AM";
+  if (containsAny(t, ["in the afternoon", "this afternoon", "afternoon"])) return "PM";
+  if (containsAny(t, ["in the evening", "this evening", "evening", "tonight"])) return "PM";
+  // "tomorrow morning at 9" — bare morning as time-of-day cue
+  if (/\bmorning\b/.test(t) && !containsAny(t, ["afternoon", "evening", "tonight"])) return "AM";
+  return "";
+}
+
+function formatHourMinuteMeridiem(hour, minute, meridiem) {
+  const h = Number(hour);
+  if (!Number.isFinite(h) || h < 1 || h > 12) return "";
+  const mm = minute == null || minute === "" ? "00" : String(Number(minute)).padStart(2, "0");
+  return `${h}:${mm} ${meridiem}`;
+}
+
+function meridiemForBareClockHour(fullText, immediateTail, hour) {
+  const tail = String(immediateTail || "");
+  if (/^\s*a\.?\s*m\.?\b/i.test(tail)) return "AM";
+  if (/^\s*p\.?\s*m\.?\b/i.test(tail)) return "PM";
+  const hinted = phraseMeridiemHint(fullText);
+  if (hinted) return hinted;
+  // Service-call default: bare "at 9" means evening unless morning/afternoon was stated.
+  if (hour >= 1 && hour <= 11) return "PM";
+  if (hour === 12) return "PM";
+  return "";
+}
+
 function extractSpecificTimeText(text) {
   const value = cleanForSpeech(text || "");
   if (!value) return "";
@@ -5182,46 +5213,57 @@ function extractSpecificTimeText(text) {
   const hourWords = {
     one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12
   };
+
+  // "nine in the morning" / "10 in the afternoon" (no leading at/around)
+  const spokenParts = value.match(
+    /\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|\d{1,2})(?::(\d{2}))?\s+(in\s+the\s+morning|in\s+the\s+afternoon|in\s+the\s+evening|this\s+morning|this\s+afternoon|this\s+evening)\b/i
+  );
+  if (spokenParts) {
+    const rawHour = spokenParts[1].toLowerCase();
+    const h = hourWords[rawHour] || Number(rawHour);
+    const minute = spokenParts[2] ? String(Number(spokenParts[2])).padStart(2, "0") : "00";
+    const bucket = spokenParts[3].toLowerCase();
+    const meridiem = bucket.includes("morning") ? "AM" : "PM";
+    const formatted = formatHourMinuteMeridiem(h, minute, meridiem);
+    if (formatted) return formatted;
+  }
+
   const atWordHour = value.match(/\b(?:at|@)\s+(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/i);
   if (atWordHour) {
+    const h = hourWords[atWordHour[1].toLowerCase()];
     const tailWord = value.slice(atWordHour.index + atWordHour[0].length);
-    if (!/^\s*[ap]\.?\s*m\.?\b/i.test(tailWord)) {
-      const h = hourWords[atWordHour[1].toLowerCase()];
-      if (h >= 1 && h <= 11) return `${h}:00 PM`;
-      if (h === 12) return `12:00 PM`;
-    }
+    const meridiem = meridiemForBareClockHour(value, tailWord, h);
+    const formatted = formatHourMinuteMeridiem(h, "00", meridiem);
+    if (formatted) return formatted;
   }
 
   const bareAtHour = value.match(/\b(?:at|@)\s+(\d{1,2})(?::(\d{2}))?\b/i);
   if (bareAtHour) {
+    const h = Number(bareAtHour[1]);
+    const minute = bareAtHour[2] ? String(Number(bareAtHour[2])).padStart(2, "0") : "00";
     const tail = value.slice(bareAtHour.index + bareAtHour[0].length);
-    if (!/^\s*[ap]\.?\s*m\.?\b/i.test(tail)) {
-      const h = Number(bareAtHour[1]);
-      const minute = bareAtHour[2] ? String(Number(bareAtHour[2])).padStart(2, "0") : "00";
-      if (h >= 1 && h <= 11) return `${h}:${minute} PM`;
-      if (h === 12) return `12:${minute} PM`;
-    }
+    const meridiem = meridiemForBareClockHour(value, tail, h);
+    const formatted = formatHourMinuteMeridiem(h, minute, meridiem);
+    if (formatted) return formatted;
   }
 
   const aroundDigit = value.match(/\b(?:around|about|like|near|maybe)\s+(\d{1,2})(?::(\d{2}))?\b/i);
   if (aroundDigit) {
+    const h = Number(aroundDigit[1]);
+    const minute = aroundDigit[2] ? String(Number(aroundDigit[2])).padStart(2, "0") : "00";
     const tailA = value.slice(aroundDigit.index + aroundDigit[0].length);
-    if (!/^\s*[ap]\.?\s*m\.?\b/i.test(tailA)) {
-      const h = Number(aroundDigit[1]);
-      const minute = aroundDigit[2] ? String(Number(aroundDigit[2])).padStart(2, "0") : "00";
-      if (h >= 1 && h <= 11) return `${h}:${minute} PM`;
-      if (h === 12) return `12:${minute} PM`;
-    }
+    const meridiem = meridiemForBareClockHour(value, tailA, h);
+    const formatted = formatHourMinuteMeridiem(h, minute, meridiem);
+    if (formatted) return formatted;
   }
 
   const aroundWord = value.match(/\b(?:around|about|like|near)\s+(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\b/i);
   if (aroundWord) {
+    const h = hourWords[aroundWord[1].toLowerCase()];
     const tailW = value.slice(aroundWord.index + aroundWord[0].length);
-    if (!/^\s*[ap]\.?\s*m\.?\b/i.test(tailW)) {
-      const h = hourWords[aroundWord[1].toLowerCase()];
-      if (h >= 1 && h <= 11) return `${h}:00 PM`;
-      if (h === 12) return `12:00 PM`;
-    }
+    const meridiem = meridiemForBareClockHour(value, tailW, h);
+    const formatted = formatHourMinuteMeridiem(h, "00", meridiem);
+    if (formatted) return formatted;
   }
 
   return "";
@@ -9524,6 +9566,69 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   }
 
   console.log(`\nPassed ${passed} of ${cases.length} wrap-up cases.`);
+  process.exit(passed === cases.length ? 0 : 1);
+}
+
+if (process.env.BLUE_CALLER_TEST_SCHEDULE_PARSE === "1") {
+  const casesPath = path.join(__dirname, "schedule_parse_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load schedule_parse_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  const weekdayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+  const daysUntilSpoken = (spoken) => {
+    const parsed = parseSpokenDateText(spoken);
+    if (!parsed) return null;
+    const current = currentEasternParts();
+    const todayUtc = new Date(Date.UTC(Number(current.year), Number(current.month) - 1, Number(current.day)));
+    let year = Number(current.year);
+    let candidate = new Date(Date.UTC(year, parsed.month - 1, parsed.day));
+    if (candidate < todayUtc) {
+      year += 1;
+      candidate = new Date(Date.UTC(year, parsed.month - 1, parsed.day));
+    }
+    return Math.round((candidate - todayUtc) / 86400000);
+  };
+
+  let passed = 0;
+  for (const tc of cases) {
+    let ok = false;
+    let detail = "";
+    if (tc.kind === "time") {
+      const got = extractSpecificTimeText(tc.text);
+      ok = got === tc.expect_time;
+      detail = `expected time=${JSON.stringify(tc.expect_time)} got ${JSON.stringify(got)} for ${JSON.stringify(tc.text)}`;
+    } else if (tc.kind === "next_weekday_window") {
+      const resolved = resolveRequestedDateToSpokenDate(tc.text);
+      const days = daysUntilSpoken(resolved);
+      ok = Number.isFinite(days) && days >= 7 && days <= 13;
+      detail = `expected 7..13 days for ${JSON.stringify(tc.text)} but resolved ${JSON.stringify(resolved)} (${days} days)`;
+    } else if (tc.kind === "next_same_weekday_as_today") {
+      const current = currentEasternParts();
+      const todayUtc = new Date(Date.UTC(Number(current.year), Number(current.month) - 1, Number(current.day)));
+      const todayName = weekdayNames[todayUtc.getUTCDay()];
+      const resolved = resolveRequestedDateToSpokenDate(`Next ${todayName}`);
+      const days = daysUntilSpoken(resolved);
+      ok = days === 7;
+      detail = `expected Next ${todayName} => 7 days, got ${JSON.stringify(resolved)} (${days} days)`;
+    } else {
+      detail = `unknown kind ${JSON.stringify(tc.kind)}`;
+    }
+
+    if (ok) {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    } else {
+      console.log(`FAIL  ${tc.name}`);
+      console.log(`  - ${detail}`);
+    }
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} schedule-parse cases.`);
   process.exit(passed === cases.length ? 0 : 1);
 }
 
