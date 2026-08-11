@@ -1,0 +1,71 @@
+[
+  {
+    "name": "at_9_in_the_morning_is_am",
+    "kind": "time",
+    "text": "tomorrow at 9 in the morning",
+    "expect_time": "9:00 AM"
+  },
+  {
+    "name": "at_nine_in_the_morning_is_am",
+    "kind": "time",
+    "text": "at nine in the morning",
+    "expect_time": "9:00 AM"
+  },
+  {
+    "name": "tomorrow_morning_at_9_is_am",
+    "kind": "time",
+    "text": "tomorrow morning at 9",
+    "expect_time": "9:00 AM"
+  },
+  {
+    "name": "around_10_in_the_morning_is_am",
+    "kind": "time",
+    "text": "around 10 in the morning",
+    "expect_time": "10:00 AM"
+  },
+  {
+    "name": "at_9_this_morning_is_am",
+    "kind": "time",
+    "text": "can we do Friday at 9 this morning",
+    "expect_time": "9:00 AM"
+  },
+  {
+    "name": "nine_in_the_morning_without_at",
+    "kind": "time",
+    "text": "nine in the morning",
+    "expect_time": "9:00 AM"
+  },
+  {
+    "name": "at_3_in_the_afternoon_is_pm",
+    "kind": "time",
+    "text": "Wednesday at 3 in the afternoon",
+    "expect_time": "3:00 PM"
+  },
+  {
+    "name": "at_7_in_the_evening_is_pm",
+    "kind": "time",
+    "text": "Thursday at 7 in the evening",
+    "expect_time": "7:00 PM"
+  },
+  {
+    "name": "bare_at_9_defaults_pm",
+    "kind": "time",
+    "text": "at 9",
+    "expect_time": "9:00 PM"
+  },
+  {
+    "name": "explicit_am_still_wins",
+    "kind": "time",
+    "text": "tomorrow at 9 AM",
+    "expect_time": "9:00 AM"
+  },
+  {
+    "name": "next_weekday_is_between_7_and_13_days",
+    "kind": "next_weekday_window",
+    "text": "Next Friday"
+  },
+  {
+    "name": "next_same_weekday_as_today_is_7_days",
+    "kind": "next_same_weekday_as_today"
+  }
+]
