@@ -361,6 +361,62 @@ function cleanForSpeech(input) {
     .trim();
 }
 
+/**
+ * Convert spoken / ASR-spaced email utterances into a literal address.
+ * cleanForSpeech deliberately strips "period" and spaced dots for voice prompts,
+ * which destroys emails if used as the storage path.
+ */
+function normalizeSpokenEmail(text) {
+  let s = cleanSpeechText(text || "");
+  if (!s) return "";
+
+  s = s
+    .replace(/^(?:(?:sure|yes|yeah|yep|yup|okay|ok|alright|all right)[,.]?\s+)*/i, "")
+    .replace(/^(?:my\s+)?(?:e-?mail(?:\s+address)?|address)\s*(?:is|:)?\s+/i, "")
+    .replace(/^(?:it(?:'s| is)|the e-?mail(?:\s+address)?(?:\s+is)?)\s+/i, "")
+    .trim();
+
+  if (!s) return "";
+
+  s = s
+    .replace(/\bat\s+the\s+rate(?:\s+sign)?\b/gi, "@")
+    .replace(/\bat\s+sign\b/gi, "@")
+    .replace(/\b(?:period|dot)\b/gi, ".")
+    .replace(/\bunderscore\b/gi, "_")
+    .replace(/\b(?:dash|hyphen|minus)\b/gi, "-");
+
+  if (!s.includes("@")) {
+    s = s.replace(/\sat\s+/gi, "@");
+  }
+
+  s = s
+    .replace(/\s*([@._+-])\s*/g, "$1")
+    .replace(/\s+/g, "")
+    .replace(/\.+/g, ".")
+    .replace(/^\.+|\.+$/g, "")
+    .toLowerCase();
+
+  return s;
+}
+
+function isPlausibleEmailAddress(value) {
+  const email = String(value || "").trim().toLowerCase();
+  if (!email || email.length > 254) return false;
+  if (!/^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/i.test(email)) return false;
+  const [local, domain] = email.split("@");
+  if (!local || !domain) return false;
+  if (local.startsWith(".") || local.endsWith(".") || local.includes("..")) return false;
+  if (domain.startsWith(".") || domain.endsWith(".") || domain.includes("..")) return false;
+  if (!domain.includes(".")) return false;
+  return true;
+}
+
+function extractEmailForStorage(text) {
+  const normalized = normalizeSpokenEmail(text);
+  return isPlausibleEmailAddress(normalized) ? normalized : "";
+}
+
+
 
 
 
@@ -8394,13 +8450,17 @@ async function handlePrompt(ws, caller, speech) {
 
 
     case "ask_quote_email_optional": {
+      const spokenQuoteEmail = extractEmailForStorage(text);
+      if (spokenQuoteEmail) {
+        caller.demoEmail = spokenQuoteEmail;
+        caller.lastStep = "ask_notes";
+        sendText(ws, buildTechnicianNotesPrompt(caller));
+        return;
+      }
       if (isEmailAddAcceptance(text)) {
         caller.lastStep = "capture_quote_email";
         sendText(ws, "Alright, go ahead and spell that out for me.");
         return;
-      }
-      if (!isNegative(text) && text.includes("@")) {
-        caller.demoEmail = cleanForSpeech(text);
       }
       caller.lastStep = "ask_notes";
       sendText(ws, buildTechnicianNotesPrompt(caller));
@@ -8415,7 +8475,7 @@ async function handlePrompt(ws, caller, speech) {
 
 
     case "capture_quote_email": {
-      caller.demoEmail = cleanForSpeech(text);
+      caller.demoEmail = extractEmailForStorage(text) || cleanSpeechText(text);
       caller.lastStep = "ask_notes";
       sendText(ws, buildTechnicianNotesPrompt(caller));
       return;
@@ -8429,13 +8489,17 @@ async function handlePrompt(ws, caller, speech) {
 
 
     case "ask_demo_email_optional": {
+      const spokenDemoEmail = extractEmailForStorage(text);
+      if (spokenDemoEmail) {
+        caller.demoEmail = spokenDemoEmail;
+        caller.lastStep = "ask_notes";
+        sendText(ws, "Before I submit this demo request, are there any notes or details you'd like me to add?");
+        return;
+      }
       if (isEmailAddAcceptance(text)) {
         caller.lastStep = "capture_demo_email";
         sendText(ws, "Alright, go ahead and spell that out for me.");
         return;
-      }
-      if (!isNegative(text) && text.includes("@")) {
-        caller.demoEmail = cleanForSpeech(text);
       }
       caller.lastStep = "ask_notes";
       sendText(ws, "Before I submit this demo request, are there any notes or details you'd like me to add?");
@@ -8450,7 +8514,7 @@ async function handlePrompt(ws, caller, speech) {
 
 
     case "capture_demo_email": {
-      caller.demoEmail = cleanForSpeech(text);
+      caller.demoEmail = extractEmailForStorage(text) || cleanSpeechText(text);
       caller.lastStep = "ask_notes";
       sendText(ws, "Before I submit this demo request, are there any notes or details you'd like me to add?");
       return;
@@ -8989,13 +9053,17 @@ async function handlePrompt(ws, caller, speech) {
 
 
     case "ask_demo_followup_email_optional": {
+      const spokenFollowupEmail = extractEmailForStorage(text);
+      if (spokenFollowupEmail) {
+        caller.demoFollowupEmail = spokenFollowupEmail;
+        queueDemoFollowupSubmission(caller);
+        closeAfterDemoFollowup(ws, caller);
+        return;
+      }
       if (isEmailAddAcceptance(text)) {
         caller.lastStep = "capture_demo_followup_email";
         sendText(ws, "Alright, go ahead and spell that out for me.");
         return;
-      }
-      if (!isNegative(text) && text.includes("@")) {
-        caller.demoFollowupEmail = cleanForSpeech(text);
       }
       queueDemoFollowupSubmission(caller);
       closeAfterDemoFollowup(ws, caller);
@@ -9010,7 +9078,7 @@ async function handlePrompt(ws, caller, speech) {
 
 
     case "capture_demo_followup_email": {
-      caller.demoFollowupEmail = cleanForSpeech(text);
+      caller.demoFollowupEmail = extractEmailForStorage(text) || cleanSpeechText(text);
       queueDemoFollowupSubmission(caller);
       closeAfterDemoFollowup(ws, caller);
       return;
@@ -9524,6 +9592,33 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   }
 
   console.log(`\nPassed ${passed} of ${cases.length} wrap-up cases.`);
+  process.exit(passed === cases.length ? 0 : 1);
+}
+
+if (process.env.BLUE_CALLER_TEST_SPOKEN_EMAIL === "1") {
+  const casesPath = path.join(__dirname, "spoken_email_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load spoken_email_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  let passed = 0;
+  for (const tc of cases) {
+    const got = extractEmailForStorage(tc.text);
+    const expect = String(tc.expect_email || "");
+    if (got === expect) {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    } else {
+      console.log(`FAIL  ${tc.name}`);
+      console.log(`  - expected ${JSON.stringify(expect)} but got ${JSON.stringify(got)} for text: ${JSON.stringify(tc.text)}`);
+    }
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} spoken-email cases.`);
   process.exit(passed === cases.length ? 0 : 1);
 }
 
