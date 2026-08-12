@@ -1,0 +1,52 @@
+[
+  {
+    "name": "spoken_period_and_at",
+    "text": "Jane period Doe at gmail period com",
+    "expect_email": "jane.doe@gmail.com"
+  },
+  {
+    "name": "spoken_dot_synonym",
+    "text": "jane dot doe at acme dot com",
+    "expect_email": "jane.doe@acme.com"
+  },
+  {
+    "name": "asr_spaced_symbols",
+    "text": "jane . doe @ gmail . com",
+    "expect_email": "jane.doe@gmail.com"
+  },
+  {
+    "name": "literal_email_passthrough",
+    "text": "jane.doe@gmail.com",
+    "expect_email": "jane.doe@gmail.com"
+  },
+  {
+    "name": "lead_in_my_email_is",
+    "text": "my email is j period smith at acme period com",
+    "expect_email": "j.smith@acme.com"
+  },
+  {
+    "name": "affirmative_prefix_with_spoken_email",
+    "text": "yes jane period doe at company period co period uk",
+    "expect_email": "jane.doe@company.co.uk"
+  },
+  {
+    "name": "underscore_and_dash",
+    "text": "jane underscore doe dash ops at mail period com",
+    "expect_email": "jane_doe-ops@mail.com"
+  },
+  {
+    "name": "at_the_rate_sign",
+    "text": "support at the rate bluecaller period com",
+    "expect_email": "support@bluecaller.com"
+  },
+  {
+    "name": "bare_affirmative_not_email",
+    "text": "yes",
+    "expect_email": ""
+  },
+  {
+    "name": "negative_skip_not_email",
+    "text": "no thanks",
+    "expect_email": ""
+  }
+]
