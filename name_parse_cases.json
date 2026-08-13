@@ -1,0 +1,129 @@
+[
+  {
+    "name": "spelled hyphen with it's",
+    "mode": "spell",
+    "text": "It's J-O-N",
+    "expect": "Jon"
+  },
+  {
+    "name": "spelled letter spaces",
+    "mode": "spell",
+    "text": "J O N",
+    "expect": "Jon"
+  },
+  {
+    "name": "spelled hyphens only",
+    "mode": "spell",
+    "text": "J-O-N",
+    "expect": "Jon"
+  },
+  {
+    "name": "it's plus spoken first name",
+    "mode": "spell",
+    "text": "It's Jon",
+    "expect": "Jon"
+  },
+  {
+    "name": "its without apostrophe plus spoken first name",
+    "mode": "spell",
+    "text": "its Jon",
+    "expect": "Jon"
+  },
+  {
+    "name": "plain spoken first name",
+    "mode": "spell",
+    "text": "Jon",
+    "expect": "Jon"
+  },
+  {
+    "name": "it's spelled hyphenated sarah",
+    "mode": "spell",
+    "text": "It's spelled S-A-R-A-H",
+    "expect": "Sarah"
+  },
+  {
+    "name": "um filler then spelled letters",
+    "mode": "spell",
+    "text": "Um it's J O N",
+    "expect": "Jon"
+  },
+  {
+    "name": "multiword last name",
+    "mode": "last",
+    "text": "De La Cruz",
+    "expect": "De La Cruz"
+  },
+  {
+    "name": "my last name is multiword",
+    "mode": "last",
+    "text": "My last name is De La Cruz",
+    "expect": "De La Cruz"
+  },
+  {
+    "name": "it's multiword last name",
+    "mode": "last",
+    "text": "It's De La Cruz",
+    "expect": "De La Cruz"
+  },
+  {
+    "name": "last name is without my",
+    "mode": "last",
+    "text": "Last name is De La Cruz",
+    "expect": "De La Cruz"
+  },
+  {
+    "name": "simple last name",
+    "mode": "last",
+    "text": "Smith",
+    "expect": "Smith"
+  },
+  {
+    "name": "last name with comma spelling",
+    "mode": "last",
+    "text": "Smith, S M I T H",
+    "expect": "Smith"
+  },
+  {
+    "name": "spelled last-name letters",
+    "mode": "last",
+    "text": "C R U Z",
+    "expect": "Cruz"
+  },
+  {
+    "name": "particle last name van der berg",
+    "mode": "last",
+    "text": "Van Der Berg",
+    "expect": "Van Der Berg"
+  },
+  {
+    "name": "st john last name",
+    "mode": "last",
+    "text": "St John",
+    "expect": "St John"
+  },
+  {
+    "name": "spelling turn keeps existing last name",
+    "mode": "spell_apply",
+    "text": "It's J-O-N",
+    "firstName": "Jon",
+    "fullName": "Jon Smith",
+    "expect_first": "Jon",
+    "expect_full": "Jon Smith"
+  },
+  {
+    "name": "spelling turn does not prefix Its",
+    "mode": "spell_apply",
+    "text": "It's J-O-N",
+    "firstName": "Jon",
+    "fullName": "Jon",
+    "expect_first": "Jon",
+    "expect_full": "Jon"
+  },
+  {
+    "name": "last-name turn stores multiword surname",
+    "mode": "last_apply",
+    "text": "My last name is De La Cruz",
+    "firstName": "Maria",
+    "expect_full": "Maria De La Cruz"
+  }
+]

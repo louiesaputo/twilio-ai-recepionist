@@ -817,7 +817,33 @@ function firstNameNeedsSpelling(name) {
 
 
 function normalizeSpelledFirstName(text, fallback = "") {
-  const letters = cleanForSpeech(text || "").replace(/[^a-zA-Z]/g, "");
+  let safe = cleanForSpeech(text || "");
+  if (!safe) return fallback || "";
+
+  for (let i = 0; i < 6; i++) {
+    const next = safe
+      .replace(/^(?:uh+|um+|umm+|well+|so+|oh+|like+)\s+/i, "")
+      .replace(/^(?:it(?:'s| is|s)?|that(?:'s| is|s)?)\s+(?:spelled\s+)?/i, "")
+      .replace(/^(?:spelled)\s+/i, "")
+      .replace(/^(?:my name is)\s+/i, "")
+      .trim();
+    if (next === safe) break;
+    safe = next;
+  }
+  if (!safe) return fallback || "";
+
+  const letterTokens = safe
+    .split(/[\s,./-]+/)
+    .map((tok) => tok.replace(/[^a-zA-Z]/g, ""))
+    .filter(Boolean);
+  if (letterTokens.length >= 2 && letterTokens.every((tok) => tok.length === 1)) {
+    return toTitleCase(letterTokens.join(""));
+  }
+
+  const nameWord = safe.match(/^([A-Za-z][A-Za-z'-]{1,14})\b/);
+  if (nameWord) return toTitleCase(nameWord[1]);
+
+  const letters = safe.replace(/[^a-zA-Z]/g, "");
   if (letters.length >= 2 && letters.length <= 15) {
     return toTitleCase(letters);
   }
@@ -3139,58 +3165,46 @@ function lowercaseFirst(value) {
 
 
 function parseLastNameResponse(text) {
-  const safe = cleanForSpeech(text || "")
-    .replace(/^my last name is\s+/i, "")
-    .replace(/^it(?: is|'s)?\s+/i, "")
-    .trim();
+  let safe = cleanForSpeech(text || "");
+  for (let i = 0; i < 6; i++) {
+    const next = safe
+      .replace(/^(?:uh+|um+|umm+|well+|so+|oh+|like+)\s+/i, "")
+      .replace(/^(?:my\s+)?last name is\s+/i, "")
+      .replace(/^the last name is\s+/i, "")
+      .replace(/^(?:it(?:'s| is|s)?|that(?:'s| is|s)?)\s+/i, "")
+      .trim();
+    if (next === safe) break;
+    safe = next;
+  }
   if (!safe) return "";
 
+  const commaIdx = safe.indexOf(",");
+  if (commaIdx > 0) {
+    const before = safe.slice(0, commaIdx).trim();
+    const after = safe.slice(commaIdx + 1).trim();
+    const afterTokens = after.split(/[\s.-]+/).filter(Boolean);
+    if (
+      afterTokens.length >= 2 &&
+      afterTokens.every((tok) => /^[A-Za-z]$/i.test(tok)) &&
+      /^[A-Za-z][A-Za-z'\s-]*$/.test(before)
+    ) {
+      return toTitleCase(before);
+    }
+  }
 
+  const spelledTokens = safe.split(/[\s,./-]+/).filter(Boolean);
+  if (spelledTokens.length >= 2 && spelledTokens.every((tok) => /^[A-Za-z]$/i.test(tok))) {
+    return toTitleCase(spelledTokens.join(""));
+  }
 
-
-
-
-
-
-  const direct = safe.match(/^([A-Za-z'-]+)(?:\s*,?\s*(?:[A-Za-z][\s-]*){2,})?$/);
-  if (direct) return toTitleCase(direct[1]);
-
-
-
-
-
-
-
-
-  const lettersOnly = safe.replace(/[^A-Za-z]/g, "");
-  if (lettersOnly.length >= 2 && lettersOnly.length <= 20) return toTitleCase(lettersOnly);
-
-
-
-
-
-
-
-
-  const firstWord = safe.match(/^([A-Za-z'-]+)/);
-  if (firstWord) return toTitleCase(firstWord[1]);
-
-
-
-
-
-
-
+  const nameOnly = safe.replace(/[^A-Za-z'\s-]/g, " ").replace(/\s+/g, " ").trim();
+  const words = nameOnly.split(/\s+/).filter(Boolean);
+  if (words.length >= 1 && words.length <= 4 && words.every((w) => /^[A-Za-z'-]+$/.test(w))) {
+    return toTitleCase(nameOnly);
+  }
 
   return "";
 }
-
-
-
-
-
-
-
 
 function buildRepeatPrompt(caller) {
   const prompt = cleanForSpeech(caller.pendingPromptText || "");
@@ -9524,6 +9538,70 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   }
 
   console.log(`\nPassed ${passed} of ${cases.length} wrap-up cases.`);
+  process.exit(passed === cases.length ? 0 : 1);
+}
+
+if (process.env.BLUE_CALLER_TEST_NAME_PARSE === "1") {
+  const casesPath = path.join(__dirname, "name_parse_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load name_parse_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  function applySpellingCapture(fullName, firstName, text) {
+    const spelledFirstName = normalizeSpelledFirstName(text, firstName || "");
+    const remainingParts = cleanForSpeech(fullName || "").split(/\s+/).filter(Boolean).slice(1).join(" ");
+    const nextFirst = spelledFirstName || firstName;
+    const nextFull = remainingParts ? `${nextFirst} ${toTitleCase(remainingParts)}` : nextFirst;
+    return { firstName: nextFirst, fullName: nextFull };
+  }
+
+  function applyLastNameCapture(firstName, text) {
+    let possibleFullName = parseFullNameFromSpeech(`${firstName} ${text}`);
+    if (!possibleFullName || !hasFullName(possibleFullName)) {
+      const parsedLastName = parseLastNameResponse(text);
+      if (parsedLastName) possibleFullName = `${firstName} ${parsedLastName}`;
+    }
+    return possibleFullName || "";
+  }
+
+  let passed = 0;
+  for (const tc of cases) {
+    const failures = [];
+    if (tc.mode === "spell") {
+      const got = normalizeSpelledFirstName(tc.text, tc.fallback || "");
+      if (got !== tc.expect) failures.push(`expected ${JSON.stringify(tc.expect)} but got ${JSON.stringify(got)}`);
+    } else if (tc.mode === "last") {
+      const got = parseLastNameResponse(tc.text);
+      if (got !== tc.expect) failures.push(`expected ${JSON.stringify(tc.expect)} but got ${JSON.stringify(got)}`);
+    } else if (tc.mode === "spell_apply") {
+      const got = applySpellingCapture(tc.fullName || "", tc.firstName || "", tc.text);
+      if (got.firstName !== tc.expect_first) {
+        failures.push(`expected firstName ${JSON.stringify(tc.expect_first)} but got ${JSON.stringify(got.firstName)}`);
+      }
+      if (got.fullName !== tc.expect_full) {
+        failures.push(`expected fullName ${JSON.stringify(tc.expect_full)} but got ${JSON.stringify(got.fullName)}`);
+      }
+    } else if (tc.mode === "last_apply") {
+      const got = applyLastNameCapture(tc.firstName || "", tc.text);
+      if (got !== tc.expect_full) failures.push(`expected ${JSON.stringify(tc.expect_full)} but got ${JSON.stringify(got)}`);
+    } else {
+      failures.push(`unknown mode ${JSON.stringify(tc.mode)}`);
+    }
+
+    if (failures.length === 0) {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    } else {
+      console.log(`FAIL  ${tc.name}`);
+      for (const failure of failures) console.log(`  - ${failure}`);
+    }
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} name-parse cases.`);
   process.exit(passed === cases.length ? 0 : 1);
 }
 
