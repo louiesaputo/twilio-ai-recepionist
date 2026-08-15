@@ -3758,37 +3758,101 @@ function classifyProjectType(text) {
   return raw || "this project";
 }
 
-function detectNamedApplianceBrand(text) {
+function precedingTextLooksNegated(text, index) {
+  const before = String(text || "").slice(Math.max(0, index - 48), index);
+  return /(?:\b(?:do not|dont|don't)\s+(?:have\s+)?(?:a|an|the)?\s*|\bwithout(?:\s+(?:a|an|the))?\s+|\bno\s+|\bnot(?:\s+(?:a|an|the|that|this|under))?\s+|\bisnt\s+|\bisn't\s+|\bno longer\s+)$/i.test(before);
+}
+
+const APPLIANCE_BRAND_PATTERNS = [
+  [/\bsub[-\s]?zero\b/, "Sub-Zero"],
+  [/\bwolf\b/, "Wolf"],
+  [/thermador/, "Thermador"],
+  [/gaggenau/, "Gaggenau"],
+  [/miele/, "Miele"],
+  [/speed[-\s]?queen|speedqueen/, "Speed Queen"],
+  [/frigidaire/, "Frigidaire"],
+  [/bosch/, "Bosch"],
+  [/viking/, "Viking"],
+  [/\bjenn[-\s]?air\b|jennair/, "JennAir"],
+  [/monogram/, "Monogram"],
+  [/kitchenaid|kitchen\s+aid/, "KitchenAid"],
+  [/dacor/, "Dacor"],
+  [/bertazzoni/, "Bertazzoni"],
+  [/fisher\s*(?:&|and)?\s*paykel/, "Fisher and Paykel"],
+  [/la\s+cornue/, "La Cornue"],
+  [/electrolux/, "Electrolux"],
+  [/whirlpool/, "Whirlpool"],
+  [/maytag/, "Maytag"],
+  [/samsung/, "Samsung"],
+  [/\blg\b/, "LG"],
+  [/amana/, "Amana"]
+];
+
+function collectNamedApplianceBrandMentions(text) {
   const t = normalizedText(text || "");
-  if (!t) return "";
-  const brandPatterns = [
-    [/\bsub[-\s]?zero\b/, "Sub-Zero"],
-    [/\bwolf\b/, "Wolf"],
-    [/thermador/, "Thermador"],
-    [/gaggenau/, "Gaggenau"],
-    [/miele/, "Miele"],
-    [/speed[-\s]?queen|speedqueen/, "Speed Queen"],
-    [/frigidaire/, "Frigidaire"],
-    [/bosch/, "Bosch"],
-    [/viking/, "Viking"],
-    [/\bjenn[-\s]?air\b|jennair/, "JennAir"],
-    [/monogram/, "Monogram"],
-    [/kitchenaid|kitchen\s+aid/, "KitchenAid"],
-    [/dacor/, "Dacor"],
-    [/bertazzoni/, "Bertazzoni"],
-    [/fisher\s*(?:&|and)?\s*paykel/, "Fisher and Paykel"],
-    [/la\s+cornue/, "La Cornue"],
-    [/electrolux/, "Electrolux"],
-    [/whirlpool/, "Whirlpool"],
-    [/maytag/, "Maytag"],
-    [/samsung/, "Samsung"],
-    [/\blg\b/, "LG"],
-    [/amana/, "Amana"]
-  ];
-  for (const [re, label] of brandPatterns) {
-    if (re.test(t)) return label;
+  if (!t) return [];
+  const mentions = [];
+  for (const [re, label] of APPLIANCE_BRAND_PATTERNS) {
+    const flags = re.flags.includes("g") ? re.flags : `${re.flags}g`;
+    const globalRe = new RegExp(re.source, flags);
+    let match;
+    while ((match = globalRe.exec(t)) !== null) {
+      mentions.push({
+        index: match.index,
+        label,
+        negated: precedingTextLooksNegated(t, match.index)
+      });
+      if (match[0].length === 0) globalRe.lastIndex += 1;
+    }
+  }
+  mentions.sort((a, b) => a.index - b.index);
+  return mentions;
+}
+
+function detectNamedApplianceBrand(text) {
+  const mentions = collectNamedApplianceBrandMentions(text);
+  for (let i = mentions.length - 1; i >= 0; i -= 1) {
+    if (!mentions[i].negated) return mentions[i].label;
   }
   return "";
+}
+
+function phraseIsNonNegatedInText(text, phrase) {
+  const t = String(text || "");
+  const p = String(phrase || "");
+  if (!t || !p) return false;
+  let from = 0;
+  while (from <= t.length - p.length) {
+    const index = t.indexOf(p, from);
+    if (index < 0) return false;
+    if (!precedingTextLooksNegated(t, index)) return true;
+    from = index + p.length;
+  }
+  return false;
+}
+
+function phraseIsOnlyNegatedInText(text, phrase) {
+  const t = String(text || "");
+  const p = String(phrase || "");
+  if (!t || !p) return false;
+  let from = 0;
+  let found = false;
+  while (from <= t.length - p.length) {
+    const index = t.indexOf(p, from);
+    if (index < 0) break;
+    found = true;
+    if (!precedingTextLooksNegated(t, index)) return false;
+    from = index + p.length;
+  }
+  return found;
+}
+
+function hasNonNegatedPhrase(text, phrases) {
+  return phrases.some((phrase) => phraseIsNonNegatedInText(text, phrase));
+}
+
+function hasOnlyNegatedPhrases(text, phrases) {
+  return phrases.some((phrase) => phraseIsOnlyNegatedInText(text, phrase));
 }
 
 function isApplianceIssueContext(text) {
@@ -3855,12 +3919,37 @@ function applianceDetailSlotsComplete(caller) {
   );
 }
 
+const APPLIANCE_WARRANTY_PHRASES = [
+  "under warranty", "still under warranty", "factory warranty", "manufacturer warranty",
+  "warranty service", "warranty visit", "covered under warranty", "in warranty"
+];
+const APPLIANCE_PLAN_PHRASES = ["extended warranty", "service plan", "home warranty", "protection plan"];
+const APPLIANCE_BILLABLE_PHRASES = [
+  "billable", "pay out of pocket", "out of pocket", "not covered", "no warranty",
+  "expired warranty", "not under warranty", "private pay",
+  "dont have a warranty", "don't have a warranty", "do not have a warranty",
+  "dont have a service plan", "don't have a service plan", "do not have a service plan",
+  "no service plan", "no extended warranty", "no home warranty", "no protection plan"
+];
+const APPLIANCE_UNKNOWN_COVERAGE_PHRASES = [
+  "not sure", "dont know", "don't know", "do not know", "unsure", "no idea"
+];
+
 function harvestApplianceDetailSlots(caller, text) {
   if (!caller || !text) return;
   const raw = cleanForSpeech(text || "");
   const t = normalizedText(raw);
+  const brandMentions = collectNamedApplianceBrandMentions(raw);
   const brand = detectNamedApplianceBrand(raw);
-  if (brand) caller.applianceBrand = brand;
+  if (brand) {
+    caller.applianceBrand = brand;
+  } else if (caller.applianceBrand) {
+    const storedBrand = normalizedText(caller.applianceBrand);
+    const storedMentions = brandMentions.filter((mention) => normalizedText(mention.label) === storedBrand);
+    if (storedMentions.length && storedMentions.every((mention) => mention.negated)) {
+      caller.applianceBrand = "";
+    }
+  }
 
   const item = detectServiceItem(raw);
   if (item && item.category === "appliance") {
@@ -3871,26 +3960,21 @@ function harvestApplianceDetailSlots(caller, text) {
     caller.applianceTypeDetail = caller.applianceTypeDetail || "built-in appliance";
   }
 
-  if (
-    containsAny(t, [
-      "under warranty", "still under warranty", "factory warranty", "manufacturer warranty",
-      "warranty service", "warranty visit", "covered under warranty", "in warranty"
-    ])
-  ) {
+  const unsureCoverage = containsAny(t, APPLIANCE_UNKNOWN_COVERAGE_PHRASES);
+  const hasPlan = hasNonNegatedPhrase(t, APPLIANCE_PLAN_PHRASES);
+  const hasWarranty = hasNonNegatedPhrase(t, APPLIANCE_WARRANTY_PHRASES);
+  const deniedCoverage =
+    containsAny(t, APPLIANCE_BILLABLE_PHRASES) ||
+    hasOnlyNegatedPhrases(t, APPLIANCE_PLAN_PHRASES) ||
+    hasOnlyNegatedPhrases(t, APPLIANCE_WARRANTY_PHRASES);
+
+  if (hasPlan && !unsureCoverage) {
+    caller.applianceCoverage = "extended_or_plan";
+  } else if (hasWarranty && !unsureCoverage) {
     caller.applianceCoverage = "warranty";
-  }
-  if (containsAny(t, ["extended warranty", "service plan", "home warranty", "protection plan"])) {
-    caller.applianceCoverage = caller.applianceCoverage || "extended_or_plan";
-  }
-  if (
-    containsAny(t, [
-      "billable", "pay out of pocket", "out of pocket", "not covered", "no warranty",
-      "expired warranty", "not under warranty", "private pay"
-    ])
-  ) {
+  } else if (deniedCoverage) {
     caller.applianceCoverage = "billable";
-  }
-  if (containsAny(t, ["not sure", "dont know", "do not know", "unsure", "no idea"])) {
+  } else if (unsureCoverage) {
     caller.applianceCoverage = caller.applianceCoverage || "unknown";
   }
 
@@ -9524,6 +9608,54 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   }
 
   console.log(`\nPassed ${passed} of ${cases.length} wrap-up cases.`);
+  process.exit(passed === cases.length ? 0 : 1);
+}
+
+if (process.env.BLUE_CALLER_TEST_APPLIANCE_SLOTS === "1") {
+  const casesPath = path.join(__dirname, "appliance_slot_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load appliance_slot_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  function harvestFromTurns(turns) {
+    const caller = {
+      applianceBrand: "",
+      applianceTypeDetail: "",
+      applianceCoverage: "",
+      applianceSymptomCaptured: false,
+      applianceIntakeMergedIssue: "",
+      issue: ""
+    };
+    for (const turn of turns) {
+      finalizeApplianceIntakeTurn(caller, turn);
+    }
+    return caller;
+  }
+
+  let passed = 0;
+  for (const tc of cases) {
+    const failures = [];
+    const caller = harvestFromTurns(tc.turns || [tc.text]);
+    if (Object.prototype.hasOwnProperty.call(tc, "expect_brand") && caller.applianceBrand !== tc.expect_brand) {
+      failures.push(`expected brand ${JSON.stringify(tc.expect_brand)} but got ${JSON.stringify(caller.applianceBrand)}`);
+    }
+    if (Object.prototype.hasOwnProperty.call(tc, "expect_coverage") && caller.applianceCoverage !== tc.expect_coverage) {
+      failures.push(`expected coverage ${JSON.stringify(tc.expect_coverage)} but got ${JSON.stringify(caller.applianceCoverage)}`);
+    }
+    if (failures.length === 0) {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    } else {
+      console.log(`FAIL  ${tc.name}`);
+      for (const failure of failures) console.log(`  - ${failure}`);
+    }
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} appliance-slot cases.`);
   process.exit(passed === cases.length ? 0 : 1);
 }
 

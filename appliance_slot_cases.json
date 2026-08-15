@@ -1,0 +1,52 @@
+[
+  {
+    "name": "correction prefers latest brand over earlier Samsung",
+    "turns": ["Samsung fridge not cooling", "Actually it's an LG, not a Samsung"],
+    "expect_brand": "LG"
+  },
+  {
+    "name": "single-turn correction does not keep first pattern match",
+    "turns": ["Actually it's an LG, not a Samsung"],
+    "expect_brand": "LG"
+  },
+  {
+    "name": "negated later brand does not overwrite Samsung",
+    "turns": ["Samsung fridge not cooling. Not LG."],
+    "expect_brand": "Samsung"
+  },
+  {
+    "name": "negated stored brand is cleared when no replacement is given",
+    "turns": ["Samsung fridge not cooling", "Wait, it's not a Samsung"],
+    "expect_brand": ""
+  },
+  {
+    "name": "denied service plan is billable, not extended coverage",
+    "turns": ["No, I don't have a service plan"],
+    "expect_coverage": "billable"
+  },
+  {
+    "name": "service plan wins over not-under-warranty wording",
+    "turns": ["It's not under warranty but I have a service plan"],
+    "expect_coverage": "extended_or_plan"
+  },
+  {
+    "name": "uncertain warranty mention stays unknown",
+    "turns": ["I'm not sure if it's under warranty"],
+    "expect_coverage": "unknown"
+  },
+  {
+    "name": "don't know contraction is unknown coverage",
+    "turns": ["I don't know"],
+    "expect_coverage": "unknown"
+  },
+  {
+    "name": "clear manufacturer warranty is captured",
+    "turns": ["It's still under warranty"],
+    "expect_coverage": "warranty"
+  },
+  {
+    "name": "extended warranty is captured as a plan",
+    "turns": ["I have an extended warranty"],
+    "expect_coverage": "extended_or_plan"
+  }
+]
