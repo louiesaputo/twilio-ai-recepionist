@@ -3811,10 +3811,15 @@ function collectNamedApplianceBrandMentions(text) {
 
 function detectNamedApplianceBrand(text) {
   const mentions = collectNamedApplianceBrandMentions(text);
-  for (let i = mentions.length - 1; i >= 0; i -= 1) {
-    if (!mentions[i].negated) return mentions[i].label;
+  let current = "";
+  for (const mention of mentions) {
+    if (!mention.negated) {
+      current = mention.label;
+    } else if (mention.label === current) {
+      current = "";
+    }
   }
-  return "";
+  return current;
 }
 
 function phraseIsNonNegatedInText(text, phrase) {
@@ -3945,8 +3950,7 @@ function harvestApplianceDetailSlots(caller, text) {
     caller.applianceBrand = brand;
   } else if (caller.applianceBrand) {
     const storedBrand = normalizedText(caller.applianceBrand);
-    const storedMentions = brandMentions.filter((mention) => normalizedText(mention.label) === storedBrand);
-    if (storedMentions.length && storedMentions.every((mention) => mention.negated)) {
+    if (brandMentions.some((mention) => mention.negated && normalizedText(mention.label) === storedBrand)) {
       caller.applianceBrand = "";
     }
   }
