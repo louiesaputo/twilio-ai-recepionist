@@ -1,0 +1,96 @@
+[
+  {
+    "name": "dont_know_is_not_negative",
+    "text": "I don't know",
+    "expect_negative": false
+  },
+  {
+    "name": "do_not_know_is_not_negative",
+    "text": "I do not know",
+    "expect_negative": false
+  },
+  {
+    "name": "asr_dont_know_is_not_negative",
+    "text": "I dont know the apartment number",
+    "expect_negative": false
+  },
+  {
+    "name": "dont_know_with_extra_detail_is_not_negative",
+    "text": "I don't know, the water is still coming out",
+    "expect_negative": false
+  },
+  {
+    "name": "bare_no_is_negative",
+    "text": "no",
+    "expect_negative": true
+  },
+  {
+    "name": "nope_is_negative",
+    "text": "nope",
+    "expect_negative": true
+  },
+  {
+    "name": "dont_think_so_is_negative",
+    "text": "I don't think so",
+    "expect_negative": true
+  },
+  {
+    "name": "do_not_think_so_is_negative",
+    "text": "I do not think so",
+    "expect_negative": true
+  },
+  {
+    "name": "dont_want_that_is_negative",
+    "text": "I don't want that",
+    "expect_negative": true
+  },
+  {
+    "name": "asr_dont_want_is_negative",
+    "text": "I dont want it marked as an emergency",
+    "expect_negative": true
+  },
+  {
+    "name": "wrap_up_dont_know_additional_issue",
+    "kind": "wrap_up",
+    "text": "I don't know if this matters, but the water heater is leaking too",
+    "expect_wrap_up": false
+  },
+  {
+    "name": "wrap_up_dont_think_so_still_closes",
+    "kind": "wrap_up",
+    "text": "I don't think so",
+    "expect_wrap_up": true
+  },
+  {
+    "name": "confirm_address_dont_know_unit_preserves_address",
+    "kind": "confirm_address",
+    "previous_address": "123 Main Street, Hartford CT 06103",
+    "text": "I don't know the apartment number",
+    "expect_address_includes": ["123 Main Street", "Hartford", "06103"],
+    "expect_address_empty": false
+  },
+  {
+    "name": "confirm_address_do_not_know_does_not_wipe",
+    "kind": "confirm_address",
+    "previous_address": "456 Oak Street, Toledo OH 43604",
+    "text": "I do not know if that's the right zip",
+    "expect_address_includes": ["456 Oak Street", "Toledo", "43604"],
+    "expect_address_empty": false
+  },
+  {
+    "name": "leak_choice_dont_know_does_not_mark_standard",
+    "kind": "leak_emergency_choice",
+    "text": "I don't know, the water is still coming out",
+    "expect_last_step": "leak_emergency_choice",
+    "expect_emergency_alert": false,
+    "expect_urgency": "normal"
+  },
+  {
+    "name": "leak_choice_plain_no_still_marks_standard",
+    "kind": "leak_emergency_choice",
+    "text": "no",
+    "expect_last_step_not": "leak_emergency_choice",
+    "expect_emergency_alert": false,
+    "expect_urgency": "normal"
+  }
+]
