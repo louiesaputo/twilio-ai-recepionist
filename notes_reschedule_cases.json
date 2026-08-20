@@ -1,0 +1,85 @@
+[
+  {
+    "name": "change_that_to_friday_time",
+    "kind": "matcher",
+    "text": "Actually change that to next Friday at 9 AM",
+    "expect_reschedule": true
+  },
+  {
+    "name": "change_it_to_friday",
+    "kind": "matcher",
+    "text": "Can you change it to Friday at 9?",
+    "expect_reschedule": true
+  },
+  {
+    "name": "friday_works_better",
+    "kind": "matcher",
+    "text": "Friday at 9 AM works better",
+    "expect_reschedule": true
+  },
+  {
+    "name": "can_we_do_friday_instead",
+    "kind": "matcher",
+    "text": "Can we do Friday instead?",
+    "expect_reschedule": true
+  },
+  {
+    "name": "reschedule_to_thursday",
+    "kind": "matcher",
+    "text": "I need to reschedule to Thursday",
+    "expect_reschedule": true
+  },
+  {
+    "name": "different_day",
+    "kind": "matcher",
+    "text": "Actually I need a different day",
+    "expect_reschedule": true
+  },
+  {
+    "name": "gate_code_note",
+    "kind": "matcher",
+    "text": "The gate code is 1234, watch out for the dog",
+    "expect_reschedule": false
+  },
+  {
+    "name": "home_at_five_note",
+    "kind": "matcher",
+    "text": "I'll be home at 5 so they can call then",
+    "expect_reschedule": false
+  },
+  {
+    "name": "decline_notes",
+    "kind": "matcher",
+    "text": "No, that's all",
+    "expect_reschedule": false
+  },
+  {
+    "name": "dont_change_appointment",
+    "kind": "matcher",
+    "text": "Don't change the appointment, Friday is fine",
+    "expect_reschedule": false
+  },
+  {
+    "name": "change_callback_number",
+    "kind": "matcher",
+    "text": "I need to change my callback number",
+    "expect_reschedule": false
+  },
+  {
+    "name": "ask_notes_reschedule_does_not_submit_old_slot",
+    "kind": "ask_notes",
+    "text": "Actually change that to next Friday at 9 AM",
+    "expect_last_step": "ask_appointment_day",
+    "expect_calendar_slot_confirmed": false,
+    "expect_booking_sent": false,
+    "expect_notes_empty": true
+  },
+  {
+    "name": "ask_notes_change_it_to_not_phone_hijack",
+    "kind": "ask_notes",
+    "text": "Can you change it to Friday at 9?",
+    "expect_last_step": "ask_appointment_day",
+    "expect_last_step_not": "capture_updated_callback_number",
+    "expect_calendar_slot_confirmed": false
+  }
+]
