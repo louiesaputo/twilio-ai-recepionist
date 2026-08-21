@@ -12,5 +12,9 @@
   { "name": "goodbye", "text": "goodbye", "expect_wrap_up": true },
   { "name": "nothing_else_thanks", "text": "nothing else thanks", "expect_wrap_up": true },
   { "name": "actually_one_more_thing", "text": "actually I need to change my address", "expect_wrap_up": false },
-  { "name": "gate_code_addition", "text": "yes can you add that the gate code is 1234", "expect_wrap_up": false }
+  { "name": "gate_code_addition", "text": "yes can you add that the gate code is 1234", "expect_wrap_up": false },
+  { "name": "something_else_gate_code", "text": "something else, the gate code is 1234", "expect_wrap_up": false },
+  { "name": "yes_there_is_something_else", "text": "yes there is something else", "expect_wrap_up": false },
+  { "name": "i_have_something_else", "text": "I have something else", "expect_wrap_up": false },
+  { "name": "need_to_add_something_else", "text": "I need to add something else, the water heater is leaking too", "expect_wrap_up": false }
 ]
