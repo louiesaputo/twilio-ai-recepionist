@@ -1,0 +1,86 @@
+[
+  {
+    "name": "something_else_is_not_negative",
+    "text": "something else",
+    "expect_negative": false
+  },
+  {
+    "name": "i_have_something_else_is_not_negative",
+    "text": "I have something else",
+    "expect_negative": false
+  },
+  {
+    "name": "yes_there_is_something_else_is_not_negative",
+    "text": "yes there is something else",
+    "expect_negative": false
+  },
+  {
+    "name": "need_to_add_something_else_is_not_negative",
+    "text": "I need to add something else",
+    "expect_negative": false
+  },
+  {
+    "name": "bare_no_is_still_negative",
+    "text": "no",
+    "expect_negative": true
+  },
+  {
+    "name": "no_something_else_still_negative",
+    "text": "no, something else",
+    "expect_negative": true
+  },
+  {
+    "name": "no_thanks_still_negative",
+    "text": "no thanks",
+    "expect_negative": true
+  },
+  {
+    "name": "wrap_up_something_else_gate_code",
+    "kind": "wrap_up",
+    "text": "something else, the gate code is 1234",
+    "expect_wrap_up": false
+  },
+  {
+    "name": "wrap_up_yes_there_is_something_else",
+    "kind": "wrap_up",
+    "text": "yes there is something else",
+    "expect_wrap_up": false
+  },
+  {
+    "name": "wrap_up_nothing_else_still_closes",
+    "kind": "wrap_up",
+    "text": "nothing else",
+    "expect_wrap_up": true
+  },
+  {
+    "name": "final_question_keeps_gate_code",
+    "kind": "final_question",
+    "text": "something else, the gate code is 1234",
+    "expect_last_step": "final_question",
+    "expect_additional_issue_includes": "gate code is 1234"
+  },
+  {
+    "name": "confirm_address_something_else_preserves_address",
+    "kind": "confirm_address",
+    "previous_address": "123 Main Street, Hartford CT 06103",
+    "text": "I have something else to add",
+    "expect_address_includes": ["123 Main Street", "Hartford", "06103"],
+    "expect_address_empty": false
+  },
+  {
+    "name": "leak_choice_something_else_does_not_mark_standard",
+    "kind": "leak_emergency_choice",
+    "text": "I have something else going on",
+    "expect_last_step": "leak_emergency_choice",
+    "expect_emergency_alert": false,
+    "expect_urgency": "normal"
+  },
+  {
+    "name": "leak_choice_plain_no_still_marks_standard",
+    "kind": "leak_emergency_choice",
+    "text": "no",
+    "expect_last_step_not": "leak_emergency_choice",
+    "expect_emergency_alert": false,
+    "expect_urgency": "normal"
+  }
+]
