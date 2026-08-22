@@ -2756,8 +2756,10 @@ function isNegative(text) {
     "not at all",
     "nah im good", "nah i m good", "nah were good", "nah we re good",
     "nope were good", "nope we re good", "nope i m good", "nah we re all good", "nope we re all good",
-    "not an emergency", "not emergency", "non emergency", "nonemergency", "not urgent",
-    "standard service", "normal service", "regular service", "something else", "another time", "different time",
+    // Keep emergency/schedule polarity phrases off the global no-list.
+    // "Yes, it's not urgent" / "can we do a different time?" at confirm_address
+    // otherwise wipe the service address; wrap-up hangs up; leak choice marks standard.
+    "something else",
     "that s not necessary", "thats not necessary", "that is not necessary",
     "that s not needed", "thats not needed", "that is not needed",
     "that won t be necessary", "that wont be necessary", "that will not be necessary",
@@ -2770,6 +2772,17 @@ function isNegative(text) {
     "definitely not",
     "i ll pass", "ill pass",
     "not interested"
+  ]);
+}
+
+/** Severity-question decline: not a universal no (must not wipe addresses or wrap up). */
+function isNonEmergencyServiceChoice(text) {
+  const t = normalizeIntentText(text);
+  if (!t) return false;
+  if (isUrgentSelection(text)) return false;
+  return containsAny(t, [
+    "not an emergency", "not emergency", "non emergency", "nonemergency", "not urgent",
+    "standard service", "normal service", "regular service", "no emergency"
   ]);
 }
 
@@ -7653,7 +7666,7 @@ async function handlePrompt(ws, caller, speech) {
     }
 
     case "leak_emergency_choice": {
-      if (isNegative(text)) {
+      if (isNegative(text) || isNonEmergencyServiceChoice(text)) {
         markStandardService(caller);
         const nextStep = caller.fullName ? (hasFullName(caller.fullName) ? resolvePhoneIntakeStep(caller) : "ask_last_name") : "ask_name";
         const spellingPrompt = caller.fullName ? maybeQueueFirstNameSpelling(caller, nextStep) : "";
@@ -7733,6 +7746,7 @@ async function handlePrompt(ws, caller, speech) {
       const nt = normalizeIntentText(text);
       const wantsStandardAfterEmergencyQuestion =
         isNegative(text) ||
+        isNonEmergencyServiceChoice(text) ||
         containsAny(nt, ["standard service", "normal service", "regular service", "not an emergency", "no emergency"]);
       const wantsUrgentNotEmergency = isUrgentSelection(text);
 
@@ -7783,7 +7797,7 @@ async function handlePrompt(ws, caller, speech) {
         return;
       }
 
-      if (isNegative(text) || containsAny(ntCook, ["normal", "standard", "regular service"])) {
+      if (isNegative(text) || isNonEmergencyServiceChoice(text) || containsAny(ntCook, ["normal", "standard", "regular service"])) {
         markStandardService(caller);
         const nextStep = caller.fullName ? (hasFullName(caller.fullName) ? resolvePhoneIntakeStep(caller) : "ask_last_name") : "ask_name";
         const spellingPrompt = caller.fullName ? maybeQueueFirstNameSpelling(caller, nextStep) : "";
@@ -9500,7 +9514,111 @@ wss.on("connection", (ws, request) => {
 
 
 
-if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
+if (process.env.BLUE_CALLER_TEST_POLARITY_INTENT === "1") {
+  const casesPath = path.join(__dirname, "polarity_intent_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load polarity_intent_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  function makeTestWs(sessionKey) {
+    return {
+      readyState: 1,
+      sessionKey,
+      send() {}
+    };
+  }
+
+  function runPolarityIntentTests() {
+    let passed = 0;
+    let total = 0;
+    const failures = [];
+
+    return Promise.resolve().then(async () => {
+      for (const tc of cases) {
+        total += 1;
+        const name = tc.name || `case_${total}`;
+        const kind = tc.kind || "is_negative";
+        const caseFailures = [];
+
+        if (kind === "wrap_up") {
+          const got = isFinalQuestionWrapUpAnswer(tc.text);
+          if (got !== Boolean(tc.expect_wrap_up)) {
+            caseFailures.push(`expected wrap_up=${Boolean(tc.expect_wrap_up)} but got ${got}`);
+          }
+        } else if (kind === "confirm_address") {
+          const sessionKey = `polarity-address-${total}`;
+          const ws = makeTestWs(sessionKey);
+          const caller = getOrCreateCaller(sessionKey);
+          caller.lastStep = "confirm_address";
+          caller.leadType = "service";
+          caller.address = tc.previous_address || "";
+          await handlePrompt(ws, caller, tc.text || "");
+          const address = String(caller.address || "");
+          if (tc.expect_address_empty === true && address.trim()) {
+            caseFailures.push(`expected address to be emptied but got ${JSON.stringify(address)}`);
+          }
+          if (tc.expect_address_empty === false && !address.trim()) {
+            caseFailures.push("expected address to be preserved but it was emptied");
+          }
+          for (const chunk of tc.expect_address_includes || []) {
+            if (!address.toLowerCase().includes(String(chunk).toLowerCase())) {
+              caseFailures.push(`expected address to include ${JSON.stringify(chunk)} but got ${JSON.stringify(address)}`);
+            }
+          }
+        } else if (kind === "leak_emergency_choice") {
+          const sessionKey = `polarity-leak-${total}`;
+          const ws = makeTestWs(sessionKey);
+          const caller = getOrCreateCaller(sessionKey);
+          caller.lastStep = "leak_emergency_choice";
+          caller.leadType = "service";
+          caller.urgency = "normal";
+          caller.emergencyAlert = false;
+          caller.issue = "water leaking from the water heater";
+          await handlePrompt(ws, caller, tc.text || "");
+          if (tc.expect_last_step && caller.lastStep !== tc.expect_last_step) {
+            caseFailures.push(`expected lastStep=${tc.expect_last_step} but got ${caller.lastStep}`);
+          }
+          if (tc.expect_last_step_not && caller.lastStep === tc.expect_last_step_not) {
+            caseFailures.push(`expected lastStep to leave ${tc.expect_last_step_not}`);
+          }
+          if (Object.prototype.hasOwnProperty.call(tc, "expect_emergency_alert") &&
+              Boolean(caller.emergencyAlert) !== Boolean(tc.expect_emergency_alert)) {
+            caseFailures.push(`expected emergencyAlert=${tc.expect_emergency_alert} but got ${caller.emergencyAlert}`);
+          }
+          if (tc.expect_urgency && caller.urgency !== tc.expect_urgency) {
+            caseFailures.push(`expected urgency=${tc.expect_urgency} but got ${caller.urgency}`);
+          }
+        } else {
+          const got = isNegative(tc.text);
+          if (got !== Boolean(tc.expect_negative)) {
+            caseFailures.push(`expected negative=${Boolean(tc.expect_negative)} but got ${got}`);
+          }
+        }
+
+        if (caseFailures.length) {
+          failures.push(`${name}: ${caseFailures.join("; ")}`);
+          console.log(`FAIL  ${name}`);
+          for (const f of caseFailures) console.log(`  - ${f}`);
+        } else {
+          passed += 1;
+          console.log(`PASS  ${name}`);
+        }
+      }
+
+      console.log(`\nPassed ${passed} of ${total} polarity-intent cases.`);
+      process.exit(failures.length ? 1 : 0);
+    }).catch((err) => {
+      console.error("Polarity intent tests failed:", err && err.message ? err.message : err);
+      process.exit(1);
+    });
+  }
+
+  runPolarityIntentTests();
+} else if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   const casesPath = path.join(__dirname, "wrap_up_cases.json");
   let cases;
   try {
@@ -9525,8 +9643,8 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
 
   console.log(`\nPassed ${passed} of ${cases.length} wrap-up cases.`);
   process.exit(passed === cases.length ? 0 : 1);
+} else {
+  server.listen(PORT, BIND_HOST, () => {
+    console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
+  });
 }
-
-server.listen(PORT, BIND_HOST, () => {
-  console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
-});
