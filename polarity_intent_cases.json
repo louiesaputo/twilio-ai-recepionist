@@ -1,0 +1,123 @@
+[
+  {
+    "name": "not_urgent_is_not_negative",
+    "text": "it's not urgent",
+    "expect_negative": false
+  },
+  {
+    "name": "yes_not_urgent_is_not_negative",
+    "text": "Yes, it's not urgent",
+    "expect_negative": false
+  },
+  {
+    "name": "not_an_emergency_is_not_negative",
+    "text": "it's not an emergency",
+    "expect_negative": false
+  },
+  {
+    "name": "standard_service_is_not_negative",
+    "text": "just standard service",
+    "expect_negative": false
+  },
+  {
+    "name": "different_time_is_not_negative",
+    "text": "can we do a different time",
+    "expect_negative": false
+  },
+  {
+    "name": "another_time_is_not_negative",
+    "text": "maybe another time",
+    "expect_negative": false
+  },
+  {
+    "name": "bare_no_is_negative",
+    "text": "no",
+    "expect_negative": true
+  },
+  {
+    "name": "nope_is_negative",
+    "text": "nope",
+    "expect_negative": true
+  },
+  {
+    "name": "wrap_up_yes_not_urgent_keeps_detail",
+    "kind": "wrap_up",
+    "text": "yes it's not urgent",
+    "expect_wrap_up": false
+  },
+  {
+    "name": "wrap_up_different_time_does_not_hangup",
+    "kind": "wrap_up",
+    "text": "can we do a different time",
+    "expect_wrap_up": false
+  },
+  {
+    "name": "wrap_up_plain_no_still_closes",
+    "kind": "wrap_up",
+    "text": "no",
+    "expect_wrap_up": true
+  },
+  {
+    "name": "confirm_address_yes_not_urgent_preserves_address",
+    "kind": "confirm_address",
+    "previous_address": "123 Main Street, Hartford CT 06103",
+    "text": "Yes, it's not urgent",
+    "expect_address_includes": ["123 Main Street", "Hartford", "06103"],
+    "expect_address_empty": false
+  },
+  {
+    "name": "confirm_address_different_time_preserves_address",
+    "kind": "confirm_address",
+    "previous_address": "456 Oak Street, Toledo OH 43604",
+    "text": "Can we do a different time?",
+    "expect_address_includes": ["456 Oak Street", "Toledo", "43604"],
+    "expect_address_empty": false
+  },
+  {
+    "name": "confirm_address_standard_service_preserves_address",
+    "kind": "confirm_address",
+    "previous_address": "789 Pine Avenue, Austin TX 78701",
+    "text": "That's just standard service",
+    "expect_address_includes": ["789 Pine Avenue", "Austin", "78701"],
+    "expect_address_empty": false
+  },
+  {
+    "name": "confirm_address_plain_no_still_wipes",
+    "kind": "confirm_address",
+    "previous_address": "10 Elm Street, Boston MA 02108",
+    "text": "no",
+    "expect_address_empty": true
+  },
+  {
+    "name": "leak_choice_not_an_emergency_marks_standard",
+    "kind": "leak_emergency_choice",
+    "text": "it's not an emergency",
+    "expect_last_step_not": "leak_emergency_choice",
+    "expect_emergency_alert": false,
+    "expect_urgency": "normal"
+  },
+  {
+    "name": "leak_choice_not_urgent_marks_standard",
+    "kind": "leak_emergency_choice",
+    "text": "it's not urgent",
+    "expect_last_step_not": "leak_emergency_choice",
+    "expect_emergency_alert": false,
+    "expect_urgency": "normal"
+  },
+  {
+    "name": "leak_choice_different_time_does_not_mark_standard",
+    "kind": "leak_emergency_choice",
+    "text": "can we do a different time",
+    "expect_last_step": "leak_emergency_choice",
+    "expect_emergency_alert": false,
+    "expect_urgency": "normal"
+  },
+  {
+    "name": "leak_choice_plain_no_still_marks_standard",
+    "kind": "leak_emergency_choice",
+    "text": "no",
+    "expect_last_step_not": "leak_emergency_choice",
+    "expect_emergency_alert": false,
+    "expect_urgency": "normal"
+  }
+]
