@@ -3729,10 +3729,44 @@ function isDemoIntent(text) {
 
 
 
+/** First-person duration guesses — not a request for a written estimate. */
+function isHedgingEstimatePhrase(text) {
+  const t = normalizedText(text || "");
+  const it = normalizeIntentText(text || "");
+  if (!t.includes("estimate") && !it.includes("estimate")) return false;
+  return (
+    /\bi(?:'d| would)?\s+estimate\b/.test(t) ||
+    /\bi(?:\s+d|\s+would)?\s+estimate\b/.test(it) ||
+    /\bi\s+estimated\b/.test(it) ||
+    /\bestimated\s+(?:it|that|the|this)\b/.test(it)
+  );
+}
+
+function isExplicitQuoteRequest(text) {
+  const t = normalizedText(text || "");
+  if (containsAny(t, ["quote", "proposal", "bid"])) return true;
+  if (t.includes("estimate") && !isHedgingEstimatePhrase(text)) return true;
+  return false;
+}
+
+function isRemodelProjectPhrase(text) {
+  const t = normalizedText(text || "");
+  const it = normalizeIntentText(text || "");
+  if (containsAny(t, ["remodel", "remodeling", "renovation", "renovating"])) return true;
+  // Word-bound so "renovated" / "renovator" are not treated as a reno project request.
+  return /\brenos?\b/.test(it);
+}
+
 function isQuoteIntent(text) {
   const t = normalizedText(text);
-  if (containsAny(t, ["quote", "estimate", "proposal", "bid"])) return true;
-  if (containsAny(t, ["remodel", "remodeling", "renovation", "renovating", "reno", "renos"])) return true;
+  if (isExplicitQuoteRequest(text)) return true;
+  if (isRemodelProjectPhrase(text)) {
+    // Past remodel language plus a live repair is service intake, not a project quote.
+    if (isLeakLikeIssue(text) || isHardEmergency(text) || hasSpecificProblemDetail(text)) {
+      return false;
+    }
+    return true;
+  }
   if (containsAny(t, ["install", "installation", "replace", "replacement", "new"]) && containsAny(t, [
     "appliance", "refrigerator", "fridge", "dishwasher", "stove", "oven", "range", "cooktop",
     "washer", "dryer", "microwave", "garbage disposal", "water heater", "toilet", "faucet"
@@ -9524,6 +9558,52 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   }
 
   console.log(`\nPassed ${passed} of ${cases.length} wrap-up cases.`);
+  process.exit(passed === cases.length ? 0 : 1);
+}
+
+if (process.env.BLUE_CALLER_TEST_QUOTE_INTENT === "1") {
+  const casesPath = path.join(__dirname, "quote_intent_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load quote_intent_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  let passed = 0;
+  for (const tc of cases) {
+    const caller = {
+      issue: tc.text,
+      leadType: "service",
+      emergencyAlert: false,
+      urgency: "normal",
+      status: "new_lead",
+      issueSummary: "",
+      projectType: "",
+      issueIsCapabilityQuestion: false
+    };
+    afterIssueCaptured(caller);
+    const expectQuote = Boolean(tc.expect_quote);
+    const expectLead = tc.expect_lead_type;
+    const gotQuote = isQuoteIntent(tc.text);
+    const okQuote = gotQuote === expectQuote;
+    const okLead = !expectLead || caller.leadType === expectLead;
+    if (okQuote && okLead) {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    } else {
+      console.log(`FAIL  ${tc.name}`);
+      if (!okQuote) {
+        console.log(`  - expected quote=${expectQuote} but got ${gotQuote} for text: ${JSON.stringify(tc.text)}`);
+      }
+      if (!okLead) {
+        console.log(`  - expected leadType=${expectLead} but got ${caller.leadType}`);
+      }
+    }
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} quote-intent cases.`);
   process.exit(passed === cases.length ? 0 : 1);
 }
 

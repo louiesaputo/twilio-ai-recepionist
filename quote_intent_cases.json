@@ -1,0 +1,74 @@
+[
+  {
+    "name": "would_estimate_sink_leak_is_service",
+    "text": "I have a leak under my sink, I would estimate it has been going for a week",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "id_estimate_leak_started_is_service",
+    "text": "I'd estimate the leak started yesterday",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "i_estimate_leak_duration_is_service",
+    "text": "I estimate the leak has been going for a few days",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "renovated_bathroom_toilet_leak_is_service",
+    "text": "I renovated my bathroom last year and now the toilet is leaking",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "renovated_kitchen_dishwasher_leak_is_service",
+    "text": "I renovated the kitchen two years ago, now the dishwasher is leaking",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "past_reno_plus_toilet_leak_is_service",
+    "text": "I did a reno last year and now the toilet is leaking",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "plain_sink_leak_is_service",
+    "text": "my kitchen sink is leaking",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "need_estimate_for_remodel_is_quote",
+    "text": "I need an estimate for a bathroom remodel",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "would_like_an_estimate_is_quote",
+    "text": "I would like an estimate",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "renovating_bathroom_is_quote",
+    "text": "We are renovating the bathroom",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "need_a_reno_is_quote",
+    "text": "I need a reno",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "explicit_quote_with_leak_stays_quote",
+    "text": "I need a quote for a bathroom remodel, the sink is leaking",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  }
+]
