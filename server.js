@@ -3715,11 +3715,14 @@ function buildAutomatedServiceAcknowledgement(caller, text) {
 
 function isDemoIntent(text) {
   const t = normalizedText(text);
-  return containsAny(t, [
-    "demo", "demonstration", "schedule a demo", "book a demo", "interested in your service",
+  if (!t) return false;
+  if (containsAny(t, [
+    "demonstration", "schedule a demo", "book a demo", "interested in your service",
     "interested in the service", "interested in your ai receptionist", "virtual receptionist service",
     "ai receptionist service", "learn more about your service", "how does your service work"
-  ]);
+  ])) return true;
+  // Word-boundary: bare "demo" must not match inside demolition/demolish.
+  return /\bdemos?\b/.test(t);
 }
 
 
@@ -9524,6 +9527,62 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   }
 
   console.log(`\nPassed ${passed} of ${cases.length} wrap-up cases.`);
+  process.exit(passed === cases.length ? 0 : 1);
+}
+
+if (process.env.BLUE_CALLER_TEST_DEMO_INTENT === "1") {
+  const casesPath = path.join(__dirname, "demo_intent_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load demo_intent_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  let passed = 0;
+  for (const tc of cases) {
+    const failures = [];
+    const gotDemo = isDemoIntent(tc.text);
+    const expectDemo = Boolean(tc.expect_demo_intent);
+    if (gotDemo !== expectDemo) {
+      failures.push(`expected demo_intent=${expectDemo} but got ${gotDemo}`);
+    }
+
+    const caller = { issue: tc.text };
+    afterIssueCaptured(caller);
+
+    if (tc.expect_lead_type && caller.leadType !== tc.expect_lead_type) {
+      failures.push(`expected leadType=${tc.expect_lead_type} but got ${caller.leadType}`);
+    }
+    if (Object.prototype.hasOwnProperty.call(tc, "expect_emergency")) {
+      const gotEmergency = Boolean(caller.emergencyAlert);
+      const expectEmergency = Boolean(tc.expect_emergency);
+      if (gotEmergency !== expectEmergency) {
+        failures.push(`expected emergencyAlert=${expectEmergency} but got ${gotEmergency}`);
+      }
+    }
+    if (Array.isArray(tc.expect_summary_excludes)) {
+      const summary = String(caller.issueSummary || "");
+      for (const needle of tc.expect_summary_excludes) {
+        if (summary.toLowerCase().includes(String(needle).toLowerCase())) {
+          failures.push(`expected issueSummary to exclude ${JSON.stringify(needle)} but got ${JSON.stringify(summary)}`);
+        }
+      }
+    }
+
+    if (!failures.length) {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    } else {
+      console.log(`FAIL  ${tc.name}`);
+      for (const failure of failures) {
+        console.log(`  - ${failure} for text: ${JSON.stringify(tc.text)}`);
+      }
+    }
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} demo-intent cases.`);
   process.exit(passed === cases.length ? 0 : 1);
 }
 
