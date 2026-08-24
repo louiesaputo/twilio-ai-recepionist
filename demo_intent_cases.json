@@ -1,0 +1,53 @@
+[
+  {
+    "name": "pure_demo_request_stays_demo",
+    "text": "I'd like to schedule a demo of your AI receptionist service",
+    "expect_demo_intent": true,
+    "expect_lead_type": "demo",
+    "expect_emergency": false
+  },
+  {
+    "name": "bare_demo_word_stays_demo",
+    "text": "I want a demo",
+    "expect_demo_intent": true,
+    "expect_lead_type": "demo",
+    "expect_emergency": false
+  },
+  {
+    "name": "book_a_demo_stays_demo",
+    "text": "Can I book a demo for next week?",
+    "expect_demo_intent": true,
+    "expect_lead_type": "demo",
+    "expect_emergency": false
+  },
+  {
+    "name": "kitchen_demolition_cap_off_is_service_not_demo",
+    "text": "we need the water lines capped for a kitchen demolition next week",
+    "expect_demo_intent": false,
+    "expect_lead_type": "service",
+    "expect_emergency": false,
+    "expect_summary_excludes": ["demo request"]
+  },
+  {
+    "name": "demolished_bathroom_leak_is_not_demo",
+    "text": "I demolished the bathroom last year and now the toilet is leaking",
+    "expect_demo_intent": false,
+    "expect_lead_type": "service",
+    "expect_emergency": false,
+    "expect_summary_excludes": ["demo request"]
+  },
+  {
+    "name": "demolishing_wall_is_not_demo",
+    "text": "we're demolishing a wall and need the pipes shut off",
+    "expect_demo_intent": false,
+    "expect_lead_type": "service",
+    "expect_emergency": false
+  },
+  {
+    "name": "demolition_with_burst_pipe_is_emergency",
+    "text": "we're doing a demolition and there's a burst pipe",
+    "expect_demo_intent": false,
+    "expect_lead_type": "emergency",
+    "expect_emergency": true
+  }
+]
