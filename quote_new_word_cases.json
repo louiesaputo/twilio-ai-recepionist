@@ -1,0 +1,74 @@
+[
+  {
+    "name": "knew_something_wrong_with_toilet_is_service",
+    "text": "I knew something was wrong with the toilet",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "knew_something_wrong_with_dishwasher_is_service",
+    "text": "I knew something was wrong with the dishwasher",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "knew_toilet_leaking_is_service",
+    "text": "I knew the toilet was leaking",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "renew_water_heater_warranty_is_service",
+    "text": "I need to renew the warranty on my water heater",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "renew_refrigerator_warranty_is_service",
+    "text": "Can you help me renew the warranty on my refrigerator",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "news_water_heater_recall_is_service",
+    "text": "I heard on the news my water heater was recalled",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "knew_fridge_getting_old_is_service",
+    "text": "I knew my refrigerator was getting old",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "plain_sink_leak_is_service",
+    "text": "my kitchen sink is leaking",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "need_a_new_water_heater_is_quote",
+    "text": "I need a new water heater",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "want_a_new_toilet_is_quote",
+    "text": "I want a new toilet",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "brand_new_dishwasher_install_is_quote",
+    "text": "I need a brand new dishwasher installed",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "replace_my_faucet_is_quote",
+    "text": "Can you replace my faucet",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  }
+]
