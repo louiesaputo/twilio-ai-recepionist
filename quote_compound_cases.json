@@ -1,0 +1,74 @@
+[
+  {
+    "name": "underestimated_sink_leak_is_service",
+    "text": "I underestimated how bad the leak under my sink is",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "underestimated_toilet_leak_is_service",
+    "text": "I underestimated how bad the leak was with the toilet",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "overestimated_ignore_leak_is_service",
+    "text": "I overestimated how quickly I could ignore this leak",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "under_estimated_two_words_leak_is_service",
+    "text": "I under estimated how bad the leak under my sink is",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "they_quoted_me_toilet_leak_is_service",
+    "text": "They quoted me 400 dollars last year and now the toilet is leaking",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "was_quoted_water_heater_leak_is_service",
+    "text": "I was quoted for this water heater last month, it is leaking",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "need_estimate_for_remodel_is_quote",
+    "text": "I need an estimate for a bathroom remodel",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "need_a_quote_is_quote",
+    "text": "I need a quote for a bathroom remodel",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "would_like_an_estimate_is_quote",
+    "text": "I would like an estimate",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "get_quoted_on_remodel_is_quote",
+    "text": "I want to get quoted on a bathroom remodel",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "need_a_new_water_heater_is_quote",
+    "text": "I need a new water heater",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "plain_toilet_leak_is_service",
+    "text": "my toilet is leaking",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  }
+]
