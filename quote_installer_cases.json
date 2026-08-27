@@ -1,0 +1,56 @@
+[
+  {
+    "name": "installer_damaged_dishwasher_is_service",
+    "text": "The installer damaged my dishwasher and I need a technician to inspect it.",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "installer_scratched_fridge_is_service",
+    "text": "Your installer scratched my refrigerator",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "installers_never_finished_dishwasher_is_service",
+    "text": "The installers never finished my dishwasher",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "calling_about_the_installer_on_my_stove_is_service",
+    "text": "I'm calling about the installer who worked on my stove",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "need_dishwasher_installed_is_quote",
+    "text": "I need a dishwasher installed",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "need_dishwasher_installation_is_quote",
+    "text": "I need a dishwasher installation",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "replace_my_faucet_is_quote",
+    "text": "Can you replace my faucet",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "need_a_new_water_heater_is_quote",
+    "text": "I need a new water heater",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "plain_toilet_leak_is_service",
+    "text": "my toilet is leaking",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  }
+]
