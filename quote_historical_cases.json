@@ -1,0 +1,80 @@
+[
+  {
+    "name": "replaced_water_heater_failed_again_is_service",
+    "text": "I replaced my water heater last week and it failed again",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "installed_dishwasher_yesterday_failed_is_service",
+    "text": "I installed a dishwasher yesterday and it failed",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "we_just_installed_water_heater_failed_is_service",
+    "text": "The water heater we just installed failed",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "had_faucet_replaced_last_week_failing_is_service",
+    "text": "I had my faucet replaced last week and it is failing",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "they_installed_new_fridge_last_month_failed_is_service",
+    "text": "They installed a new refrigerator last month and it failed",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "need_dishwasher_installed_is_quote",
+    "text": "I need a dishwasher installed",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "need_dishwasher_installation_is_quote",
+    "text": "I need a dishwasher installation",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "replace_my_faucet_is_quote",
+    "text": "Can you replace my faucet",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "need_a_new_water_heater_is_quote",
+    "text": "I need a new water heater",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "need_new_water_heater_because_old_failed_is_quote",
+    "text": "I need a new water heater because the old one failed",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "need_water_heater_replaced_is_quote",
+    "text": "I need my water heater replaced",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "explicit_quote_still_quote",
+    "text": "I need a quote for a water heater replacement",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "plain_toilet_leak_is_service",
+    "text": "my toilet is leaking",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  }
+]
