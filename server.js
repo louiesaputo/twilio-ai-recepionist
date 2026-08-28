@@ -3729,9 +3729,28 @@ function isDemoIntent(text) {
 
 
 
+/** Past-tense install/replace plus a failure is a service call, not a new-install quote. */
+function isHistoricalInstallOrReplaceFailure(text) {
+  const t = normalizeIntentText(text || "");
+  if (!t) return false;
+  const pastInstallOrReplace =
+    /\b(?:i|we|they|he|she)\s+(?:just\s+|recently\s+|already\s+)?(?:had\s+.{0,40}?)?(?:replaced|installed)\b/.test(t) ||
+    (
+      /\b(?:replaced|installed)\b/.test(t) &&
+      /\b(?:last\s+(?:week|night|month)|yesterday|recently|ago|this\s+morning|just)\b/.test(t)
+    );
+  if (!pastInstallOrReplace) return false;
+  return containsAny(t, [
+    "failed", "failing", "fails", "failure",
+    "quit working", "went out", "went bad"
+  ]);
+}
+
 function isQuoteIntent(text) {
   const t = normalizedText(text);
   if (containsAny(t, ["quote", "estimate", "proposal", "bid"])) return true;
+  // Past-tense "I replaced/installed … it failed" is a repair, not a new-install quote.
+  if (isHistoricalInstallOrReplaceFailure(text)) return false;
   if (containsAny(t, ["remodel", "remodeling", "renovation", "renovating", "reno", "renos"])) return true;
   if (containsAny(t, ["install", "installation", "replace", "replacement", "new"]) && containsAny(t, [
     "appliance", "refrigerator", "fridge", "dishwasher", "stove", "oven", "range", "cooktop",
@@ -9499,6 +9518,52 @@ wss.on("connection", (ws, request) => {
 
 
 
+
+if (process.env.BLUE_CALLER_TEST_QUOTE_HISTORICAL === "1") {
+  const casesPath = path.join(__dirname, "quote_historical_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load quote_historical_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  let passed = 0;
+  for (const tc of cases) {
+    const caller = {
+      issue: tc.text,
+      leadType: "service",
+      emergencyAlert: false,
+      urgency: "normal",
+      status: "new_lead",
+      issueSummary: "",
+      projectType: "",
+      issueIsCapabilityQuestion: false
+    };
+    afterIssueCaptured(caller);
+    const expectQuote = Boolean(tc.expect_quote);
+    const expectLead = tc.expect_lead_type;
+    const gotQuote = isQuoteIntent(tc.text);
+    const okQuote = gotQuote === expectQuote;
+    const okLead = !expectLead || caller.leadType === expectLead;
+    if (okQuote && okLead) {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    } else {
+      console.log(`FAIL  ${tc.name}`);
+      if (!okQuote) {
+        console.log(`  - expected quote=${expectQuote} but got ${gotQuote} for text: ${JSON.stringify(tc.text)}`);
+      }
+      if (!okLead) {
+        console.log(`  - expected leadType=${expectLead} but got ${caller.leadType}`);
+      }
+    }
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} quote-historical cases.`);
+  process.exit(passed === cases.length ? 0 : 1);
+}
 
 if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   const casesPath = path.join(__dirname, "wrap_up_cases.json");
