@@ -1,0 +1,86 @@
+[
+  {
+    "name": "new_washer_for_faucet_is_service",
+    "text": "I need a new washer for my faucet",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "replace_washer_in_faucet_is_service",
+    "text": "The washer in my faucet needs to be replaced",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "faucet_washer_replacement_is_service",
+    "text": "Can you replace the washer in my kitchen faucet",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "new_filter_for_refrigerator_is_service",
+    "text": "I need a new water filter for my refrigerator",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "replace_filter_in_fridge_is_service",
+    "text": "Can you replace the filter in my fridge",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "fridge_filter_replaced_is_service",
+    "text": "I need a fridge filter replaced",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "new_wax_ring_for_toilet_is_service",
+    "text": "I need a new wax ring for my toilet",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "need_new_washer_machine_is_quote",
+    "text": "I need a new washer",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "need_dishwasher_installed_is_quote",
+    "text": "I need a dishwasher installed",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "need_new_refrigerator_is_quote",
+    "text": "I need a new refrigerator",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "new_fridge_with_water_filter_is_quote",
+    "text": "I need a new refrigerator with a water filter",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "need_new_toilet_is_quote",
+    "text": "I need a new toilet",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "explicit_quote_for_filter_stays_quote",
+    "text": "I need a quote to replace the filter in my fridge",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "plain_toilet_leak_is_service",
+    "text": "my toilet is leaking",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  }
+]
