@@ -3729,14 +3729,35 @@ function isDemoIntent(text) {
 
 
 
+/** "new" as an extra problem, or a recently bought unit that already failed — not a new-install quote. */
+function isNewProblemOrFailedNewUnit(text) {
+  const t = normalizeIntentText(text || "");
+  if (!t) return false;
+  if (/\bnew\s+(problem|issues?|trouble|symptom|symptoms)\b/.test(t)) return true;
+  if (!/\b(?:my|our|the|this|that)\s+(?:brand\s+)?new\b/.test(t)) return false;
+  return containsAny(t, [
+    "failed", "failing", "fails", "failure",
+    "acting up", "acts up",
+    "error code", "giving me trouble", "giving us trouble",
+    "having issues", "having a problem", "having problems",
+    "quit working", "went out", "went bad", "died", "is dead"
+  ]);
+}
+
+/** Word-boundary appliance/fixture names so "range" does not match inside "strange"/"orange"/"arrangement". */
+function hasQuotedApplianceOrFixtureWord(text) {
+  const t = normalizeIntentText(text || "");
+  if (!t) return false;
+  return /\b(?:appliances?|refrigerators?|fridges?|dishwashers?|stoves?|ovens?|ranges?|cooktops?|washers?|dryers?|microwaves?|garbage\s+disposals?|water\s+heaters?|toilets?|faucets?)\b/.test(t);
+}
+
 function isQuoteIntent(text) {
   const t = normalizedText(text);
   if (containsAny(t, ["quote", "estimate", "proposal", "bid"])) return true;
   if (containsAny(t, ["remodel", "remodeling", "renovation", "renovating", "reno", "renos"])) return true;
-  if (containsAny(t, ["install", "installation", "replace", "replacement", "new"]) && containsAny(t, [
-    "appliance", "refrigerator", "fridge", "dishwasher", "stove", "oven", "range", "cooktop",
-    "washer", "dryer", "microwave", "garbage disposal", "water heater", "toilet", "faucet"
-  ])) return true;
+  // "a new problem with my washer" / "my new fridge failed" are repairs, not project quotes.
+  if (isNewProblemOrFailedNewUnit(text)) return false;
+  if (containsAny(t, ["install", "installation", "replace", "replacement", "new"]) && hasQuotedApplianceOrFixtureWord(t)) return true;
   return false;
 }
 
@@ -9499,6 +9520,52 @@ wss.on("connection", (ws, request) => {
 
 
 
+
+if (process.env.BLUE_CALLER_TEST_QUOTE_NEW_PROBLEM === "1") {
+  const casesPath = path.join(__dirname, "quote_new_problem_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load quote_new_problem_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  let passed = 0;
+  for (const tc of cases) {
+    const caller = {
+      issue: tc.text,
+      leadType: "service",
+      emergencyAlert: false,
+      urgency: "normal",
+      status: "new_lead",
+      issueSummary: "",
+      projectType: "",
+      issueIsCapabilityQuestion: false
+    };
+    afterIssueCaptured(caller);
+    const expectQuote = Boolean(tc.expect_quote);
+    const expectLead = tc.expect_lead_type;
+    const gotQuote = isQuoteIntent(tc.text);
+    const okQuote = gotQuote === expectQuote;
+    const okLead = !expectLead || caller.leadType === expectLead;
+    if (okQuote && okLead) {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    } else {
+      console.log(`FAIL  ${tc.name}`);
+      if (!okQuote) {
+        console.log(`  - expected quote=${expectQuote} but got ${gotQuote} for text: ${JSON.stringify(tc.text)}`);
+      }
+      if (!okLead) {
+        console.log(`  - expected leadType=${expectLead} but got ${caller.leadType}`);
+      }
+    }
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} quote-new-problem cases.`);
+  process.exit(passed === cases.length ? 0 : 1);
+}
 
 if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   const casesPath = path.join(__dirname, "wrap_up_cases.json");
