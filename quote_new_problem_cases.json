@@ -1,0 +1,92 @@
+[
+  {
+    "name": "new_problem_with_washer_is_service",
+    "text": "I have a new problem with my washer",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "new_issue_with_dishwasher_is_service",
+    "text": "There's a new issue with my dishwasher",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "new_problem_with_toilet_is_service",
+    "text": "I'm calling about a new problem with my toilet",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "my_new_refrigerator_failed_is_service",
+    "text": "My new refrigerator failed",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "the_new_dishwasher_acting_up_is_service",
+    "text": "The new dishwasher is acting up",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "our_new_water_heater_error_code_is_service",
+    "text": "Our new water heater has an error code",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "strange_new_smell_is_not_range_quote",
+    "text": "There's a strange new smell in the house",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "new_arrangement_is_not_range_quote",
+    "text": "I need a new arrangement for the pipes",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "plain_sink_leak_is_service",
+    "text": "my kitchen sink is leaking",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "need_a_new_washer_is_quote",
+    "text": "I need a new washer",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "want_a_new_toilet_is_quote",
+    "text": "I want a new toilet",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "new_dishwasher_installed_is_quote",
+    "text": "I need a new dishwasher installed",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "need_a_new_range_is_quote",
+    "text": "I need a new range",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "replace_water_heater_is_quote",
+    "text": "Can you replace my water heater",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "refrigerator_installation_is_quote",
+    "text": "I need a refrigerator installation",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  }
+]
