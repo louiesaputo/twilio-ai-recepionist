@@ -2737,9 +2737,44 @@ function isAffirmative(text) {
 
 
 
+/** Standalone refusals like "no way" / "uh, no way" / "absolutely no way". */
+function isShortNoWayRefusal(text) {
+  const t = normalizeIntentText(text);
+  if (!t) return false;
+  const stripped = t.replace(/^(?:uh+|um+|umm+|hmm+|well+|oh+|so+|like+|hey+|yeah+|yep+|yup+)\s+/, "");
+  if (/^(?:absolutely|definitely|like)\s+no way\b/.test(stripped)) return true;
+  return /^(no way)(?:\s+(?:thanks|thank you|jose|man))?\s*$/.test(stripped);
+}
+
+/**
+ * "There's no way to shut it off" / "no way the tech can get in without a gate code"
+ * is inability or extra detail, not a hard no. Bare "no way" remains a refusal.
+ */
+function isNoWayConstraintPhrase(text) {
+  const t = normalizeIntentText(text);
+  if (!/\bno way\b/.test(t)) return false;
+  if (isShortNoWayRefusal(t)) return false;
+  if (/\bno way\s+(?:that s|thats|that is|it s|its)\s+(?:not\s+)?(?:right|correct|it)\b/.test(t)) return false;
+  if (/\bno way\s+that(?:s| is)?\s+(?:the\s+)?(?:right|correct)\b/.test(t)) return false;
+  return true;
+}
+
+/** Water that cannot be stopped — an emergency answer, not a severity decline. */
+function describesCannotShutOff(text) {
+  const t = normalizeIntentText(text);
+  if (!t) return false;
+  return (
+    /\bno way\s+to\s+(?:shut|turn|stop|close)\b/.test(t) ||
+    /\b(?:can t|cannot|cant|can not)\s+(?:shut(?:\s+it)?(?:\s+off)?|turn it off|stop the water|turn the water off)\b/.test(t) ||
+    /\bwont\s+shut\s+off\b/.test(t) ||
+    /\bwon t\s+shut\s+off\b/.test(t)
+  );
+}
+
 function isNegative(text) {
   const t = normalizeIntentText(text);
   if (!t) return false;
+  if (isNoWayConstraintPhrase(t)) return false;
 
   const loneWordNegatives = new Set([
     "no", "nope", "nah", "naw", "nay", "nyet",
@@ -4944,6 +4979,8 @@ function looksLikeAddressCorrection(text) {
   const t = normalizedText(text);
   if (!t) return false;
   if (isAffirmative(t) || isNegative(t)) return false;
+  // "no way to get in" contains the word "way"; that is not a street-type correction.
+  if (isNoWayConstraintPhrase(text)) return false;
 
 
 
@@ -7679,7 +7716,7 @@ async function handlePrompt(ws, caller, speech) {
 
 
 
-      if (isAffirmative(text)) {
+      if (describesCannotShutOff(text) || isAffirmative(text)) {
         markEmergency(caller);
         const nextStep = caller.fullName ? (hasFullName(caller.fullName) ? resolvePhoneIntakeStep(caller) : "ask_last_name") : "ask_name";
         const spellingPrompt = caller.fullName ? maybeQueueFirstNameSpelling(caller, nextStep) : "";
@@ -7717,7 +7754,7 @@ async function handlePrompt(ws, caller, speech) {
 
 
     case "refrigerator_emergency_choice": {
-      if (isAffirmative(text) || containsAny(normalizeIntentText(text), ["emergency", "mark it as an emergency", "mark this as an emergency"])) {
+      if (describesCannotShutOff(text) || isAffirmative(text) || containsAny(normalizeIntentText(text), ["emergency", "mark it as an emergency", "mark this as an emergency"])) {
         markEmergency(caller);
         const nextStep = caller.fullName ? (hasFullName(caller.fullName) ? resolvePhoneIntakeStep(caller) : "ask_last_name") : "ask_name";
         const spellingPrompt = caller.fullName ? maybeQueueFirstNameSpelling(caller, nextStep) : "";
@@ -7770,7 +7807,7 @@ async function handlePrompt(ws, caller, speech) {
     case "appliance_priority_choice": {
       const ntCook = normalizeIntentText(text);
 
-      if (containsAny(ntCook, ["emergency", "mark it as an emergency", "mark this as an emergency"])) {
+      if (describesCannotShutOff(text) || containsAny(ntCook, ["emergency", "mark it as an emergency", "mark this as an emergency"])) {
         markEmergency(caller);
         const nextStep = caller.fullName ? (hasFullName(caller.fullName) ? resolvePhoneIntakeStep(caller) : "ask_last_name") : "ask_name";
         const spellingPrompt = caller.fullName ? maybeQueueFirstNameSpelling(caller, nextStep) : "";
@@ -9500,7 +9537,111 @@ wss.on("connection", (ws, request) => {
 
 
 
-if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
+if (process.env.BLUE_CALLER_TEST_NO_WAY_CONSTRAINT === "1") {
+  const casesPath = path.join(__dirname, "no_way_constraint_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load no_way_constraint_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  function makeTestWs(sessionKey) {
+    return {
+      readyState: 1,
+      sessionKey,
+      send() {}
+    };
+  }
+
+  function runNoWayConstraintTests() {
+    let passed = 0;
+    let total = 0;
+    const failures = [];
+
+    return Promise.resolve().then(async () => {
+      for (const tc of cases) {
+        total += 1;
+        const name = tc.name || `case_${total}`;
+        const kind = tc.kind || "is_negative";
+        const caseFailures = [];
+
+        if (kind === "wrap_up") {
+          const got = isFinalQuestionWrapUpAnswer(tc.text);
+          if (got !== Boolean(tc.expect_wrap_up)) {
+            caseFailures.push(`expected wrap_up=${Boolean(tc.expect_wrap_up)} but got ${got}`);
+          }
+        } else if (kind === "confirm_address") {
+          const sessionKey = `no-way-address-${total}`;
+          const ws = makeTestWs(sessionKey);
+          const caller = getOrCreateCaller(sessionKey);
+          caller.lastStep = "confirm_address";
+          caller.leadType = "service";
+          caller.address = tc.previous_address || "";
+          await handlePrompt(ws, caller, tc.text || "");
+          const address = String(caller.address || "");
+          if (tc.expect_address_empty === true && address.trim()) {
+            caseFailures.push(`expected address to be emptied but got ${JSON.stringify(address)}`);
+          }
+          if (tc.expect_address_empty === false && !address.trim()) {
+            caseFailures.push("expected address to be preserved but it was emptied");
+          }
+          for (const chunk of tc.expect_address_includes || []) {
+            if (!address.toLowerCase().includes(String(chunk).toLowerCase())) {
+              caseFailures.push(`expected address to include ${JSON.stringify(chunk)} but got ${JSON.stringify(address)}`);
+            }
+          }
+        } else if (kind === "leak_emergency_choice") {
+          const sessionKey = `no-way-leak-${total}`;
+          const ws = makeTestWs(sessionKey);
+          const caller = getOrCreateCaller(sessionKey);
+          caller.lastStep = "leak_emergency_choice";
+          caller.leadType = "service";
+          caller.urgency = "normal";
+          caller.emergencyAlert = false;
+          caller.issue = "water leaking from the water heater";
+          await handlePrompt(ws, caller, tc.text || "");
+          if (tc.expect_last_step && caller.lastStep !== tc.expect_last_step) {
+            caseFailures.push(`expected lastStep=${tc.expect_last_step} but got ${caller.lastStep}`);
+          }
+          if (tc.expect_last_step_not && caller.lastStep === tc.expect_last_step_not) {
+            caseFailures.push(`expected lastStep to leave ${tc.expect_last_step_not}`);
+          }
+          if (Object.prototype.hasOwnProperty.call(tc, "expect_emergency_alert") &&
+              Boolean(caller.emergencyAlert) !== Boolean(tc.expect_emergency_alert)) {
+            caseFailures.push(`expected emergencyAlert=${tc.expect_emergency_alert} but got ${caller.emergencyAlert}`);
+          }
+          if (tc.expect_lead_type && caller.leadType !== tc.expect_lead_type) {
+            caseFailures.push(`expected leadType=${tc.expect_lead_type} but got ${caller.leadType}`);
+          }
+        } else {
+          const got = isNegative(tc.text);
+          if (got !== Boolean(tc.expect_negative)) {
+            caseFailures.push(`expected negative=${Boolean(tc.expect_negative)} but got ${got}`);
+          }
+        }
+
+        if (caseFailures.length) {
+          failures.push(`${name}: ${caseFailures.join("; ")}`);
+          console.log(`FAIL ${name}`);
+          for (const f of caseFailures) console.log(` - ${f}`);
+        } else {
+          passed += 1;
+          console.log(`PASS ${name}`);
+        }
+      }
+
+      console.log(`\nPassed ${passed} of ${total} no-way-constraint cases.`);
+      process.exit(failures.length ? 1 : 0);
+    }).catch((err) => {
+      console.error("No-way constraint tests failed:", err && err.message ? err.message : err);
+      process.exit(1);
+    });
+  }
+
+  runNoWayConstraintTests();
+} else if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   const casesPath = path.join(__dirname, "wrap_up_cases.json");
   let cases;
   try {
@@ -9525,8 +9666,8 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
 
   console.log(`\nPassed ${passed} of ${cases.length} wrap-up cases.`);
   process.exit(passed === cases.length ? 0 : 1);
+} else {
+  server.listen(PORT, BIND_HOST, () => {
+    console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
+  });
 }
-
-server.listen(PORT, BIND_HOST, () => {
-  console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
-});

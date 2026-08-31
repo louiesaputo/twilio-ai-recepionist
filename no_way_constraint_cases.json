@@ -1,0 +1,111 @@
+[
+  {
+    "name": "no_way_to_shut_it_off_is_not_negative",
+    "text": "There's no way to shut it off",
+    "expect_negative": false
+  },
+  {
+    "name": "no_way_to_shut_the_water_off_is_not_negative",
+    "text": "no way to shut the water off",
+    "expect_negative": false
+  },
+  {
+    "name": "no_way_tech_gate_code_is_not_negative",
+    "text": "no way the technician can get in without the gate code",
+    "expect_negative": false
+  },
+  {
+    "name": "cant_shut_it_off_is_not_negative",
+    "text": "I can't shut it off",
+    "expect_negative": false
+  },
+  {
+    "name": "bare_no_way_is_negative",
+    "text": "no way",
+    "expect_negative": true
+  },
+  {
+    "name": "uh_no_way_is_negative",
+    "text": "uh, no way",
+    "expect_negative": true
+  },
+  {
+    "name": "absolutely_no_way_is_negative",
+    "text": "absolutely no way",
+    "expect_negative": true
+  },
+  {
+    "name": "no_way_thats_right_is_negative",
+    "text": "no way that's right",
+    "expect_negative": true
+  },
+  {
+    "name": "plain_no_is_negative",
+    "text": "no",
+    "expect_negative": true
+  },
+  {
+    "name": "wrap_up_no_way_shutoff_keeps_detail",
+    "kind": "wrap_up",
+    "text": "there's no way to shut it off",
+    "expect_wrap_up": false
+  },
+  {
+    "name": "wrap_up_gate_code_constraint_keeps_detail",
+    "kind": "wrap_up",
+    "text": "no way the technician can get in without the gate code",
+    "expect_wrap_up": false
+  },
+  {
+    "name": "wrap_up_bare_no_way_still_closes",
+    "kind": "wrap_up",
+    "text": "no way",
+    "expect_wrap_up": true
+  },
+  {
+    "name": "leak_choice_no_way_to_shut_off_is_emergency",
+    "kind": "leak_emergency_choice",
+    "text": "There's no way to shut it off",
+    "expect_emergency_alert": true,
+    "expect_lead_type": "emergency",
+    "expect_last_step_not": "leak_emergency_choice"
+  },
+  {
+    "name": "leak_choice_no_way_to_shut_water_off_is_emergency",
+    "kind": "leak_emergency_choice",
+    "text": "no way to shut the water off",
+    "expect_emergency_alert": true,
+    "expect_lead_type": "emergency",
+    "expect_last_step_not": "leak_emergency_choice"
+  },
+  {
+    "name": "leak_choice_plain_no_still_marks_standard",
+    "kind": "leak_emergency_choice",
+    "text": "no",
+    "expect_emergency_alert": false,
+    "expect_lead_type": "service",
+    "expect_last_step_not": "leak_emergency_choice"
+  },
+  {
+    "name": "confirm_address_no_way_gate_code_preserves_address",
+    "kind": "confirm_address",
+    "previous_address": "123 Main Street, Hartford CT 06103",
+    "text": "there's no way to get in without the gate code",
+    "expect_address_includes": ["123 Main Street", "Hartford", "06103"],
+    "expect_address_empty": false
+  },
+  {
+    "name": "confirm_address_plain_no_still_wipes",
+    "kind": "confirm_address",
+    "previous_address": "10 Elm Street, Boston MA 02108",
+    "text": "no",
+    "expect_address_empty": true
+  },
+  {
+    "name": "confirm_address_bare_no_way_still_wipes",
+    "kind": "confirm_address",
+    "previous_address": "456 Oak Street, Toledo OH 43604",
+    "text": "no way",
+    "expect_address_empty": true
+  }
+]
