@@ -4712,6 +4712,36 @@ function isHardEmergency(text) {
   ]) || isMainLineEmergencyCandidate(t) || isOutsideWaterLossEmergency(t);
 }
 
+/** Denials of the hazard itself ("no gas leak") must not count as disclosing that hazard. */
+function isHardEmergencyHazardDenial(text) {
+  const t = normalizeIntentText(text);
+  if (!t) return false;
+  return /^(?:there\s+is\s+)?(?:no|not\s+a)\s+(?:gas\s+leak|flooding|flooded|burst(?:\s+pipe)?|sewer|sewage)\b/.test(t)
+    || /^(?:it\s+)?(?:is\s+)?not\s+(?:a\s+)?(?:gas\s+leak|flooding|burst(?:\s+pipe)?)\b/.test(t);
+}
+
+/**
+ * leak_emergency_choice polarity. `isNegative` matches any leading "no", so
+ * "No water in the house" / "No, but there is a gas leak" were treated as
+ * declining emergency. Hard-emergency disclosure and "this is an emergency"
+ * must win; "not an emergency" still stays standard.
+ */
+function resolveLeakEmergencyChoice(text) {
+  const raw = String(text || "");
+  const t = normalizeIntentText(raw);
+  if (!t) return "reprompt";
+  if (isHardEmergency(raw) && !isHardEmergencyHazardDenial(raw)) return "emergency";
+  if (containsAny(t, ["not an emergency", "not emergency", "non emergency", "nonemergency", "no emergency"])) {
+    return "standard";
+  }
+  if (containsAny(t, ["emergency", "mark it as an emergency", "mark this as an emergency"])) {
+    return "emergency";
+  }
+  if (isNegative(raw)) return "standard";
+  if (isAffirmative(raw)) return "emergency";
+  return "reprompt";
+}
+
 
 
 
@@ -7653,7 +7683,8 @@ async function handlePrompt(ws, caller, speech) {
     }
 
     case "leak_emergency_choice": {
-      if (isNegative(text)) {
+      const leakChoice = resolveLeakEmergencyChoice(text);
+      if (leakChoice === "standard") {
         markStandardService(caller);
         const nextStep = caller.fullName ? (hasFullName(caller.fullName) ? resolvePhoneIntakeStep(caller) : "ask_last_name") : "ask_name";
         const spellingPrompt = caller.fullName ? maybeQueueFirstNameSpelling(caller, nextStep) : "";
@@ -7679,7 +7710,7 @@ async function handlePrompt(ws, caller, speech) {
 
 
 
-      if (isAffirmative(text)) {
+      if (leakChoice === "emergency") {
         markEmergency(caller);
         const nextStep = caller.fullName ? (hasFullName(caller.fullName) ? resolvePhoneIntakeStep(caller) : "ask_last_name") : "ask_name";
         const spellingPrompt = caller.fullName ? maybeQueueFirstNameSpelling(caller, nextStep) : "";
@@ -9499,6 +9530,33 @@ wss.on("connection", (ws, request) => {
 
 
 
+
+if (process.env.BLUE_CALLER_TEST_LEAK_EMERGENCY === "1") {
+  const casesPath = path.join(__dirname, "leak_emergency_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load leak_emergency_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  let passed = 0;
+  for (const tc of cases) {
+    const got = resolveLeakEmergencyChoice(tc.text);
+    const expect = tc.expect;
+    if (got === expect) {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    } else {
+      console.log(`FAIL  ${tc.name}`);
+      console.log(`  - expected ${expect} but got ${got} for text: ${JSON.stringify(tc.text)}`);
+    }
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} leak-emergency cases.`);
+  process.exit(passed === cases.length ? 0 : 1);
+}
 
 if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   const casesPath = path.join(__dirname, "wrap_up_cases.json");
