@@ -1,0 +1,57 @@
+[
+  {
+    "name": "no_water_in_the_house_is_emergency",
+    "text": "No water in the house",
+    "expect": "emergency"
+  },
+  {
+    "name": "no_water_anywhere_is_emergency",
+    "text": "No water anywhere",
+    "expect": "emergency"
+  },
+  {
+    "name": "no_but_gas_leak_is_emergency",
+    "text": "No, but there is a gas leak",
+    "expect": "emergency"
+  },
+  {
+    "name": "no_pouring_through_ceiling_is_emergency",
+    "text": "No, water is pouring through the ceiling",
+    "expect": "emergency"
+  },
+  {
+    "name": "no_this_is_an_emergency",
+    "text": "No, this is an emergency",
+    "expect": "emergency"
+  },
+  {
+    "name": "yes_is_emergency",
+    "text": "yes",
+    "expect": "emergency"
+  },
+  {
+    "name": "no_alone_is_standard",
+    "text": "no",
+    "expect": "standard"
+  },
+  {
+    "name": "no_just_a_drip_is_standard",
+    "text": "no, just a small drip",
+    "expect": "standard"
+  },
+  {
+    "name": "not_an_emergency_is_standard",
+    "text": "not an emergency",
+    "expect": "standard"
+  },
+  {
+    "name": "no_gas_leak_just_a_drip_is_standard",
+    "text": "no gas leak, just a drip",
+    "expect": "standard"
+  },
+  {
+    "name": "unclear_maybe_reprompts",
+    "text": "maybe",
+    "expect": "reprompt"
+  }
+]
