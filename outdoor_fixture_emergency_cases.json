@@ -1,0 +1,82 @@
+[
+  {
+    "name": "spigot_leaking_water_outside_is_service",
+    "text": "There's water leaking outside from the spigot",
+    "expect_hard_emergency": false,
+    "expect_main_line": false,
+    "expect_lead_type": "service",
+    "expect_emergency_alert": false
+  },
+  {
+    "name": "outdoor_faucet_leaking_in_yard_is_service",
+    "text": "The outdoor faucet is leaking water in the yard",
+    "expect_hard_emergency": false,
+    "expect_main_line": false,
+    "expect_lead_type": "service",
+    "expect_emergency_alert": false
+  },
+  {
+    "name": "sprinkler_leaking_water_front_yard_is_service",
+    "text": "My sprinkler is leaking water in the front yard",
+    "expect_hard_emergency": false,
+    "expect_main_line": false,
+    "expect_lead_type": "service",
+    "expect_emergency_alert": false
+  },
+  {
+    "name": "hose_bib_leaking_water_outside_is_service",
+    "text": "The hose bib is leaking water outside",
+    "expect_hard_emergency": false,
+    "expect_main_line": false,
+    "expect_lead_type": "service",
+    "expect_emergency_alert": false
+  },
+  {
+    "name": "sprinkler_broken_line_in_yard_is_service",
+    "text": "The sprinkler has a broken line leaking water in the yard",
+    "expect_hard_emergency": false,
+    "expect_main_line": false,
+    "expect_lead_type": "service",
+    "expect_emergency_alert": false
+  },
+  {
+    "name": "water_main_in_yard_broke_is_emergency",
+    "text": "The water main in my yard broke",
+    "expect_hard_emergency": true,
+    "expect_main_line": true,
+    "expect_lead_type": "emergency",
+    "expect_emergency_alert": true
+  },
+  {
+    "name": "water_main_leaking_near_spigot_stays_emergency",
+    "text": "The water main is leaking near the outdoor spigot",
+    "expect_hard_emergency": true,
+    "expect_main_line": true,
+    "expect_lead_type": "emergency",
+    "expect_emergency_alert": true
+  },
+  {
+    "name": "pooling_water_in_front_yard_is_emergency",
+    "text": "There's pooling water in the front yard",
+    "expect_hard_emergency": true,
+    "expect_main_line": false,
+    "expect_lead_type": "emergency",
+    "expect_emergency_alert": true
+  },
+  {
+    "name": "yard_water_line_broke_is_emergency",
+    "text": "The water line in the backyard broke",
+    "expect_hard_emergency": true,
+    "expect_main_line": true,
+    "expect_lead_type": "emergency",
+    "expect_emergency_alert": true
+  },
+  {
+    "name": "plain_kitchen_faucet_leak_is_service",
+    "text": "my kitchen faucet is leaking",
+    "expect_hard_emergency": false,
+    "expect_main_line": false,
+    "expect_lead_type": "service",
+    "expect_emergency_alert": false
+  }
+]

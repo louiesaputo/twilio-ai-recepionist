@@ -4653,8 +4653,21 @@ function buildAlternateAvailabilityOffer(caller, requestedText, availability, pr
 
 
 
+function isOutdoorFixtureLeakContext(text) {
+  return containsAny(normalizedText(text), ["faucet", "spigot", "hose bib", "hose bibb", "sprinkler"]);
+}
+
 function isMainLineEmergencyCandidate(text) {
   const t = normalizedText(text);
+  // Outdoor fixture leaks (spigot/faucet/sprinkler/hose bib) are standard service.
+  // isOutsideWaterLossEmergency already excludes them; the water+outside fallback
+  // here used to still mark those turns as a broken main.
+  if (isOutdoorFixtureLeakContext(t) && !containsAny(t, [
+    "water main", "main line", "main leak", "main broke", "main broken", "main popped",
+    "main in my yard", "main in the yard"
+  ])) {
+    return false;
+  }
   const yardLike = containsAny(t, ["yard", "front yard", "back yard", "outside", "front lawn", "back lawn"]);
   const mainLike = containsAny(t, [
     "water main", "main line", "main leak", "main broke", "main broken", "main popped",
@@ -4689,7 +4702,7 @@ function isOutsideWaterLossEmergency(text) {
     "leak by the meter", "water meter"
   ]) && containsAny(t, ["leak", "leaking", "gushing", "pouring", "broken", "busted", "pooling", "water coming up"]);
   const outsideLeakLike = yardLike && containsAny(t, ["leak", "leaking", "gushing", "pouring", "water coming up", "pooling", "standing water"])
-    && !containsAny(t, ["faucet", "spigot", "hose bib", "hose bibb", "sprinkler"]);
+    && !isOutdoorFixtureLeakContext(t);
 
 
 
@@ -9499,6 +9512,58 @@ wss.on("connection", (ws, request) => {
 
 
 
+
+if (process.env.BLUE_CALLER_TEST_OUTDOOR_FIXTURE_EMERGENCY === "1") {
+  const casesPath = path.join(__dirname, "outdoor_fixture_emergency_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load outdoor_fixture_emergency_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  let passed = 0;
+  for (const tc of cases) {
+    const caller = {
+      issue: tc.text,
+      leadType: "service",
+      emergencyAlert: false,
+      urgency: "normal",
+      status: "new_lead",
+      issueSummary: "",
+      projectType: "",
+      issueIsCapabilityQuestion: false
+    };
+    afterIssueCaptured(caller);
+    const failures = [];
+    const gotHard = isHardEmergency(tc.text);
+    const gotMain = isMainLineEmergencyCandidate(tc.text);
+    if (gotHard !== Boolean(tc.expect_hard_emergency)) {
+      failures.push(`expected hardEmergency=${Boolean(tc.expect_hard_emergency)} but got ${gotHard}`);
+    }
+    if (gotMain !== Boolean(tc.expect_main_line)) {
+      failures.push(`expected mainLine=${Boolean(tc.expect_main_line)} but got ${gotMain}`);
+    }
+    if (tc.expect_lead_type && caller.leadType !== tc.expect_lead_type) {
+      failures.push(`expected leadType=${tc.expect_lead_type} but got ${caller.leadType}`);
+    }
+    if (Object.prototype.hasOwnProperty.call(tc, "expect_emergency_alert") && Boolean(caller.emergencyAlert) !== Boolean(tc.expect_emergency_alert)) {
+      failures.push(`expected emergencyAlert=${Boolean(tc.expect_emergency_alert)} but got ${Boolean(caller.emergencyAlert)}`);
+    }
+    if (failures.length === 0) {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    } else {
+      console.log(`FAIL  ${tc.name}`);
+      for (const failure of failures) console.log(`  - ${failure}`);
+      console.log(`  - text: ${JSON.stringify(tc.text)}`);
+    }
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} outdoor-fixture-emergency cases.`);
+  process.exit(passed === cases.length ? 0 : 1);
+}
 
 if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   const casesPath = path.join(__dirname, "wrap_up_cases.json");
