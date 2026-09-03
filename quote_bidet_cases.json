@@ -1,0 +1,56 @@
+[
+  {
+    "name": "bidet_leak_is_service",
+    "text": "My bidet is leaking",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "bidet_sprayer_drip_is_service",
+    "text": "The bidet sprayer is dripping",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "toilet_bidet_attachment_leak_is_service",
+    "text": "The bidet attachment on my toilet is leaking",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "problem_with_bidet_is_service",
+    "text": "I have a problem with my bidet",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "plain_toilet_leak_is_service",
+    "text": "my toilet is leaking",
+    "expect_quote": false,
+    "expect_lead_type": "service"
+  },
+  {
+    "name": "need_a_bid_is_quote",
+    "text": "I need a bid",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "give_me_a_bid_on_remodel_is_quote",
+    "text": "Can you give me a bid on a bathroom remodel",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "send_me_bids_is_quote",
+    "text": "Send me some bids",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  },
+  {
+    "name": "need_a_quote_is_quote",
+    "text": "I need a quote for a bathroom remodel",
+    "expect_quote": true,
+    "expect_lead_type": "quote"
+  }
+]
