@@ -1,0 +1,56 @@
+[
+  {
+    "name": "no_water_pressure_is_service",
+    "text": "I have no water pressure",
+    "expect_lead_type": "service",
+    "expect_emergency": false
+  },
+  {
+    "name": "no_water_pressure_at_kitchen_faucet_is_service",
+    "text": "There's no water pressure at the kitchen faucet",
+    "expect_lead_type": "service",
+    "expect_emergency": false
+  },
+  {
+    "name": "no_water_pressure_upstairs_is_service",
+    "text": "We have no water pressure upstairs",
+    "expect_lead_type": "service",
+    "expect_emergency": false
+  },
+  {
+    "name": "no_water_flow_is_service",
+    "text": "There's no water flow at the shower",
+    "expect_lead_type": "service",
+    "expect_emergency": false
+  },
+  {
+    "name": "no_water_damage_with_drip_is_service",
+    "text": "There's no water damage, just a slow drip under the sink",
+    "expect_lead_type": "service",
+    "expect_emergency": false
+  },
+  {
+    "name": "no_water_stains_with_leak_is_service",
+    "text": "No water stains, just a small leak at the toilet",
+    "expect_lead_type": "service",
+    "expect_emergency": false
+  },
+  {
+    "name": "house_has_no_water_is_emergency",
+    "text": "we have no water in the house",
+    "expect_lead_type": "emergency",
+    "expect_emergency": true
+  },
+  {
+    "name": "no_water_anywhere_is_emergency",
+    "text": "There's no water anywhere",
+    "expect_lead_type": "emergency",
+    "expect_emergency": true
+  },
+  {
+    "name": "bare_no_water_is_emergency",
+    "text": "I have no water",
+    "expect_lead_type": "emergency",
+    "expect_emergency": true
+  }
+]
