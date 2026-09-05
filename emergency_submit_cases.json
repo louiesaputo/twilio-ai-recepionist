@@ -1,0 +1,44 @@
+[
+  {
+    "name": "burst_pipe_sets_summary_and_can_submit",
+    "text": "I have a burst pipe",
+    "expect_lead_type": "emergency",
+    "expect_emergency": true,
+    "expect_summary_substring": "burst"
+  },
+  {
+    "name": "gas_leak_sets_summary_and_can_submit",
+    "text": "There's a gas leak in the kitchen",
+    "expect_lead_type": "emergency",
+    "expect_emergency": true,
+    "expect_summary_substring": "gas"
+  },
+  {
+    "name": "ceiling_pouring_sets_summary_and_can_submit",
+    "text": "Water is pouring through the ceiling",
+    "expect_lead_type": "emergency",
+    "expect_emergency": true,
+    "expect_summary_substring": "ceiling"
+  },
+  {
+    "name": "no_water_in_house_sets_summary_and_can_submit",
+    "text": "we have no water in the house",
+    "expect_lead_type": "emergency",
+    "expect_emergency": true,
+    "expect_summary_substring": "no water"
+  },
+  {
+    "name": "sewer_backup_sets_summary_and_can_submit",
+    "text": "There's sewage backing up in the basement",
+    "expect_lead_type": "emergency",
+    "expect_emergency": true,
+    "expect_summary_substring": "sewer"
+  },
+  {
+    "name": "standard_drip_still_submits",
+    "text": "My kitchen faucet is dripping",
+    "expect_lead_type": "service",
+    "expect_emergency": false,
+    "expect_summary_substring": "faucet"
+  }
+]
