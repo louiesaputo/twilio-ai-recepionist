@@ -6631,6 +6631,7 @@ function afterIssueCaptured(caller) {
   }
 
   if (isHardEmergency(caller.issue)) {
+    caller.issueSummary = classifyIssue(caller.issue).summary;
     markEmergency(caller);
     return;
   }
@@ -9524,6 +9525,65 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   }
 
   console.log(`\nPassed ${passed} of ${cases.length} wrap-up cases.`);
+  process.exit(passed === cases.length ? 0 : 1);
+}
+
+if (process.env.BLUE_CALLER_TEST_HARD_EMERGENCY_SUMMARY === "1") {
+  const casesPath = path.join(__dirname, "emergency_submit_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load emergency_submit_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  let passed = 0;
+  for (const tc of cases) {
+    const caller = {
+      issue: tc.text,
+      leadType: "service",
+      emergencyAlert: false,
+      urgency: "normal",
+      status: "new_lead",
+      issueSummary: "",
+      projectType: "",
+      issueIsCapabilityQuestion: false,
+      fullName: "Jamie Rivera",
+      firstName: "Jamie",
+      callbackNumber: "2035550100",
+      phone: "2035550100"
+    };
+    afterIssueCaptured(caller);
+    const expectLead = tc.expect_lead_type;
+    const expectEmergency = Boolean(tc.expect_emergency);
+    const expectNeedle = String(tc.expect_summary_substring || "").toLowerCase();
+    const leadOk = caller.leadType === expectLead;
+    const emergencyOk = Boolean(caller.emergencyAlert) === expectEmergency;
+    const summaryText = String(caller.issueSummary || "").toLowerCase();
+    const summaryOk = Boolean(caller.issueSummary) && (!expectNeedle || summaryText.includes(expectNeedle));
+    const submitOk = shouldSendToMake(caller) === true;
+    if (leadOk && emergencyOk && summaryOk && submitOk) {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    } else {
+      console.log(`FAIL  ${tc.name}`);
+      if (!leadOk) {
+        console.log(`  - expected leadType=${expectLead} but got ${caller.leadType}`);
+      }
+      if (!emergencyOk) {
+        console.log(`  - expected emergencyAlert=${expectEmergency} but got ${Boolean(caller.emergencyAlert)}`);
+      }
+      if (!summaryOk) {
+        console.log(`  - expected issueSummary containing ${JSON.stringify(expectNeedle)} but got ${JSON.stringify(caller.issueSummary)}`);
+      }
+      if (!submitOk) {
+        console.log("  - expected shouldSendToMake=true after name and callback were captured");
+      }
+    }
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} emergency-submit cases.`);
   process.exit(passed === cases.length ? 0 : 1);
 }
 
