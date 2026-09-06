@@ -1,0 +1,127 @@
+[
+  {
+    "name": "smell_gas_is_hard_emergency",
+    "kind": "matcher",
+    "text": "I smell gas in the kitchen",
+    "expect_hard_emergency": true,
+    "expect_generic_emergency": false
+  },
+  {
+    "name": "gas_smell_is_hard_emergency",
+    "kind": "matcher",
+    "text": "There's a gas smell near the stove",
+    "expect_hard_emergency": true,
+    "expect_generic_emergency": false
+  },
+  {
+    "name": "bare_flood_is_hard_emergency",
+    "kind": "matcher",
+    "text": "There's a flood in the basement",
+    "expect_hard_emergency": true,
+    "expect_generic_emergency": false
+  },
+  {
+    "name": "toilet_overflow_is_hard_emergency",
+    "kind": "matcher",
+    "text": "The toilet is overflowing",
+    "expect_hard_emergency": true,
+    "expect_generic_emergency": false
+  },
+  {
+    "name": "emergency_plus_no_water_is_not_generic",
+    "kind": "matcher",
+    "text": "This is an emergency, we have no water in the house",
+    "expect_hard_emergency": true,
+    "expect_generic_emergency": false
+  },
+  {
+    "name": "bare_emergency_still_generic",
+    "kind": "matcher",
+    "text": "This is an emergency",
+    "expect_hard_emergency": false,
+    "expect_generic_emergency": true
+  },
+  {
+    "name": "gas_stove_ignite_is_not_hard_emergency",
+    "kind": "matcher",
+    "text": "My gas stove won't ignite",
+    "expect_hard_emergency": false
+  },
+  {
+    "name": "floodlight_is_not_hard_emergency",
+    "kind": "matcher",
+    "text": "I need a floodlight installed",
+    "expect_hard_emergency": false
+  },
+  {
+    "name": "an_emergency_is_not_a_name",
+    "kind": "matcher",
+    "text": "an emergency",
+    "expect_hard_emergency": false,
+    "expect_name": ""
+  },
+  {
+    "name": "smell_gas_sets_summary_and_can_submit",
+    "kind": "after_issue",
+    "text": "I smell gas in the kitchen",
+    "expect_lead_type": "emergency",
+    "expect_emergency": true,
+    "expect_summary_substring": "gas",
+    "expect_can_submit": true
+  },
+  {
+    "name": "bare_flood_sets_summary_and_can_submit",
+    "kind": "after_issue",
+    "text": "There's a flood in the basement",
+    "expect_lead_type": "emergency",
+    "expect_emergency": true,
+    "expect_summary_substring": "flood",
+    "expect_can_submit": true
+  },
+  {
+    "name": "toilet_overflow_sets_summary_and_can_submit",
+    "kind": "after_issue",
+    "text": "The toilet is overflowing",
+    "expect_lead_type": "emergency",
+    "expect_emergency": true,
+    "expect_summary_substring": "overflow",
+    "expect_can_submit": true
+  },
+  {
+    "name": "standard_drip_still_service",
+    "kind": "after_issue",
+    "text": "My kitchen faucet is dripping",
+    "expect_lead_type": "service",
+    "expect_emergency": false,
+    "expect_summary_substring": "faucet",
+    "expect_can_submit": true
+  },
+  {
+    "name": "ask_issue_preserves_emergency_no_water",
+    "kind": "ask_issue",
+    "text": "This is an emergency, we have no water in the house",
+    "expect_issue_includes": "no water",
+    "expect_last_step_not": "ask_issue_again",
+    "expect_emergency": true,
+    "expect_lead_type": "emergency",
+    "expect_name_not_includes": "emergency"
+  },
+  {
+    "name": "ask_issue_preserves_emergency_gas_smell",
+    "kind": "ask_issue",
+    "text": "This is an emergency, I smell gas",
+    "expect_issue_includes": "smell gas",
+    "expect_last_step_not": "ask_issue_again",
+    "expect_emergency": true,
+    "expect_lead_type": "emergency",
+    "expect_name_not_includes": "emergency"
+  },
+  {
+    "name": "ask_issue_bare_emergency_still_clarifies",
+    "kind": "ask_issue",
+    "text": "This is an emergency",
+    "expect_issue_empty": true,
+    "expect_last_step": "ask_issue_again",
+    "expect_emergency": false
+  }
+]

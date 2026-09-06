@@ -552,7 +552,7 @@ function normalizeNameCandidate(rawName) {
     "not", "no", "issue", "problem", "service", "schedule", "scheduling", "appointment",
     "someone", "heating", "cooling", "draining", "working", "broken", "leaking",
     "stove", "oven", "range", "cooktop", "dishwasher", "refrigerator", "washer",
-    "dryer", "microwave", "faucet", "sink", "toilet"
+    "dryer", "microwave", "faucet", "sink", "toilet", "emergency", "urgent"
   ]);
 
 
@@ -1027,6 +1027,10 @@ function looksLikeIssueText(text) {
       t.includes("won't") ||
       t.includes("wont") ||
       t.includes("leak") ||
+      t.includes("flood") ||
+      t.includes("overflow") ||
+      t.includes("smell gas") ||
+      t.includes("gas smell") ||
       t.includes("cool") ||
       t.includes("heat") ||
       t.includes("drain") ||
@@ -1064,6 +1068,9 @@ function looksLikeIssueText(text) {
 function isGenericEmergencyIssue(text) {
   const t = normalizedText(text || "");
   if (!t) return false;
+  // Known hard emergencies already have a dispatchable problem; do not wipe them
+  // just because the caller also said "emergency" / "urgent".
+  if (isHardEmergency(text)) return false;
   if (!containsAny(t, ["emergency", "urgent", "right away", "as soon as possible", "immediately"])) return false;
   return !containsAny(t, [
     "leak", "burst", "pipe", "faucet", "sink", "toilet", "roof", "ceiling", "water heater",
@@ -4265,7 +4272,8 @@ function hasSpecificProblemDetail(issue) {
     "won't stop", "wont stop", "stopped", "broken", "cracked", "loose", "leak", "leaking",
     "drip", "dripping", "clog", "clogged", "overflow", "overflowing", "backed up", "backing up",
     "making noise", "noisy", "noise", "sparking", "smoke", "smoking", "burning smell", "gas smell",
-    "water everywhere", "flooding", "freezing", "too warm", "too hot", "pilot", "not flushing",
+    "smell gas", "smells like gas", "smelling gas", "smell of gas", "gas odor",
+    "water everywhere", "flooding", "flood", "freezing", "too warm", "too hot", "pilot", "not flushing",
     "running constantly", "not responding", "burner", "burners"
   ]);
 }
@@ -4706,10 +4714,25 @@ function isOutsideWaterLossEmergency(text) {
 
 function isHardEmergency(text) {
   const t = normalizedText(text);
-  return containsAny(t, [
+  if (containsAny(t, [
     "burst", "burst pipe", "flooding", "flooded", "sewer", "sewage", "gas leak", "no water",
     "gushing", "pouring", "water everywhere", "water coming through the ceiling", "ceiling pouring", "water is pouring"
-  ]) || isMainLineEmergencyCandidate(t) || isOutsideWaterLossEmergency(t);
+  ])) {
+    return true;
+  }
+  if (isMainLineEmergencyCandidate(t) || isOutsideWaterLossEmergency(t)) return true;
+  // Bare "flood" is a hard emergency; do not treat flood lights / insurance as one.
+  if (/\bflood\b/.test(t) && !containsAny(t, ["flood light", "floodlight", "flood lamp", "flood insurance"])) {
+    return true;
+  }
+  if (containsAny(t, ["overflow", "overflowing"])) return true;
+  if (containsAny(t, [
+    "gas smell", "smell gas", "smells like gas", "smelling gas", "smell of gas",
+    "smells of gas", "gas odor", "odor of gas"
+  ])) {
+    return true;
+  }
+  return false;
 }
 
 
@@ -4778,7 +4801,15 @@ function classifyIssue(issue) {
   if (containsAny(text, ["flood", "flooding", "flooded"])) return { summary: "flooding" };
   if (containsAny(text, ["burst pipe"])) return { summary: "a burst pipe" };
   if (containsAny(text, ["sewer", "sewage"])) return { summary: "a sewer backup" };
-  if (containsAny(text, ["gas leak"])) return { summary: "a gas leak" };
+  if (containsAny(text, [
+    "gas leak", "gas smell", "smell gas", "smells like gas", "smelling gas",
+    "smell of gas", "smells of gas", "gas odor", "odor of gas"
+  ])) return { summary: "a gas leak" };
+  if (containsAny(text, ["overflow", "overflowing"])) {
+    if (text.includes("toilet")) return { summary: "an overflowing toilet" };
+    if (text.includes("sink")) return { summary: "an overflowing sink" };
+    return { summary: "an overflow" };
+  }
   if (containsAny(text, ["no water"])) return { summary: "no water service" };
   if (containsAny(text, ["leak", "leaking", "drip", "dripping"])) return { summary: "a water leak" };
   return { summary: buildUnknownIssueSummary(issue) };
@@ -6631,6 +6662,7 @@ function afterIssueCaptured(caller) {
   }
 
   if (isHardEmergency(caller.issue)) {
+    caller.issueSummary = classifyIssue(caller.issue).summary;
     markEmergency(caller);
     return;
   }
@@ -9527,6 +9559,138 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   process.exit(passed === cases.length ? 0 : 1);
 }
 
-server.listen(PORT, BIND_HOST, () => {
-  console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
-});
+if (process.env.BLUE_CALLER_TEST_HARD_EMERGENCY_MISS === "1") {
+  const casesPath = path.join(__dirname, "hard_emergency_miss_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load hard_emergency_miss_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  function makeTestWs(sessionKey) {
+    return {
+      readyState: 1,
+      sessionKey,
+      send() {}
+    };
+  }
+
+  Promise.resolve().then(async () => {
+    let passed = 0;
+    const failures = [];
+
+    for (let i = 0; i < cases.length; i++) {
+      const tc = cases[i];
+      const name = tc.name || `case_${i + 1}`;
+      const caseFailures = [];
+      const kind = tc.kind || "after_issue";
+
+      if (kind === "matcher") {
+        const gotHard = isHardEmergency(tc.text);
+        if (gotHard !== Boolean(tc.expect_hard_emergency)) {
+          caseFailures.push(`expected isHardEmergency=${Boolean(tc.expect_hard_emergency)} but got ${gotHard}`);
+        }
+        if (Object.prototype.hasOwnProperty.call(tc, "expect_generic_emergency")) {
+          const gotGeneric = isGenericEmergencyIssue(tc.text);
+          if (gotGeneric !== Boolean(tc.expect_generic_emergency)) {
+            caseFailures.push(`expected isGenericEmergencyIssue=${Boolean(tc.expect_generic_emergency)} but got ${gotGeneric}`);
+          }
+        }
+        if (Object.prototype.hasOwnProperty.call(tc, "expect_name")) {
+          const gotName = normalizeNameCandidate(tc.text);
+          if (String(gotName || "") !== String(tc.expect_name || "")) {
+            caseFailures.push(`expected name=${JSON.stringify(tc.expect_name)} but got ${JSON.stringify(gotName)}`);
+          }
+        }
+      } else if (kind === "ask_issue") {
+        const sessionKey = `hard-emergency-miss-${i + 1}`;
+        const ws = makeTestWs(sessionKey);
+        const caller = getOrCreateCaller(sessionKey);
+        caller.lastStep = "ask_issue";
+        await handlePrompt(ws, caller, tc.text || "");
+        if (tc.expect_issue_includes) {
+          const issue = String(caller.issue || "").toLowerCase();
+          if (!issue.includes(String(tc.expect_issue_includes).toLowerCase())) {
+            caseFailures.push(`expected issue to include ${JSON.stringify(tc.expect_issue_includes)} but got ${JSON.stringify(caller.issue)}`);
+          }
+        }
+        if (tc.expect_issue_empty && String(caller.issue || "").trim()) {
+          caseFailures.push(`expected issue to stay empty but got ${JSON.stringify(caller.issue)}`);
+        }
+        if (tc.expect_last_step_not && caller.lastStep === tc.expect_last_step_not) {
+          caseFailures.push(`expected lastStep not to be ${tc.expect_last_step_not}`);
+        }
+        if (tc.expect_last_step && caller.lastStep !== tc.expect_last_step) {
+          caseFailures.push(`expected lastStep=${tc.expect_last_step} but got ${caller.lastStep}`);
+        }
+        if (Object.prototype.hasOwnProperty.call(tc, "expect_emergency") &&
+            Boolean(caller.emergencyAlert) !== Boolean(tc.expect_emergency)) {
+          caseFailures.push(`expected emergencyAlert=${tc.expect_emergency} but got ${caller.emergencyAlert}`);
+        }
+        if (Object.prototype.hasOwnProperty.call(tc, "expect_lead_type") && caller.leadType !== tc.expect_lead_type) {
+          caseFailures.push(`expected leadType=${tc.expect_lead_type} but got ${caller.leadType}`);
+        }
+        if (tc.expect_name_not_includes) {
+          const fullName = String(caller.fullName || "").toLowerCase();
+          if (fullName.includes(String(tc.expect_name_not_includes).toLowerCase())) {
+            caseFailures.push(`expected fullName not to include ${JSON.stringify(tc.expect_name_not_includes)} but got ${JSON.stringify(caller.fullName)}`);
+          }
+        }
+      } else {
+        const caller = {
+          issue: tc.text,
+          leadType: "service",
+          emergencyAlert: false,
+          urgency: "normal",
+          status: "new_lead",
+          issueSummary: "",
+          projectType: "",
+          issueIsCapabilityQuestion: false,
+          fullName: "Jamie Rivera",
+          firstName: "Jamie",
+          callbackNumber: "2035550100",
+          phone: "2035550100"
+        };
+        afterIssueCaptured(caller);
+        if (Object.prototype.hasOwnProperty.call(tc, "expect_lead_type") && caller.leadType !== tc.expect_lead_type) {
+          caseFailures.push(`expected leadType=${tc.expect_lead_type} but got ${caller.leadType}`);
+        }
+        if (Object.prototype.hasOwnProperty.call(tc, "expect_emergency") &&
+            Boolean(caller.emergencyAlert) !== Boolean(tc.expect_emergency)) {
+          caseFailures.push(`expected emergencyAlert=${tc.expect_emergency} but got ${Boolean(caller.emergencyAlert)}`);
+        }
+        if (tc.expect_summary_substring) {
+          const summaryText = String(caller.issueSummary || "").toLowerCase();
+          if (!summaryText.includes(String(tc.expect_summary_substring).toLowerCase())) {
+            caseFailures.push(`expected issueSummary containing ${JSON.stringify(tc.expect_summary_substring)} but got ${JSON.stringify(caller.issueSummary)}`);
+          }
+        }
+        if (Object.prototype.hasOwnProperty.call(tc, "expect_can_submit") &&
+            shouldSendToMake(caller) !== Boolean(tc.expect_can_submit)) {
+          caseFailures.push(`expected shouldSendToMake=${Boolean(tc.expect_can_submit)} but got ${shouldSendToMake(caller)}`);
+        }
+      }
+
+      if (caseFailures.length) {
+        failures.push(`${name}: ${caseFailures.join("; ")}`);
+        console.log(`FAIL  ${name}`);
+        for (const f of caseFailures) console.log(`  - ${f}`);
+      } else {
+        passed += 1;
+        console.log(`PASS  ${name}`);
+      }
+    }
+
+    console.log(`\nPassed ${passed} of ${cases.length} hard-emergency-miss cases.`);
+    process.exit(failures.length ? 1 : 0);
+  }).catch((err) => {
+    console.error("hard-emergency-miss tests failed:", err);
+    process.exit(1);
+  });
+} else if (process.env.BLUE_CALLER_TEST_WRAP_UP !== "1") {
+  server.listen(PORT, BIND_HOST, () => {
+    console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
+  });
+}
