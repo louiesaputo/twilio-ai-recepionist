@@ -1065,11 +1065,15 @@ function isGenericEmergencyIssue(text) {
   const t = normalizedText(text || "");
   if (!t) return false;
   if (!containsAny(t, ["emergency", "urgent", "right away", "as soon as possible", "immediately"])) return false;
+  // Already-named problems must not be wiped just because the caller also said "emergency".
+  if (hasSpecificProblemDetail(text)) return false;
   return !containsAny(t, [
     "leak", "burst", "pipe", "faucet", "sink", "toilet", "roof", "ceiling", "water heater",
     "refrigerator", "fridge", "freezer", "dishwasher", "washer", "dryer", "oven", "stove",
     "range", "cooktop", "water main", "yard", "sewer", "sewage", "gas leak", "flood", "drain",
-    "clog", "clogged", "spigot", "remodel", "quote", "estimate", "installation"
+    "clog", "clogged", "spigot", "remodel", "quote", "estimate", "installation",
+    "hot water", "no heat", "no ac", "no a c", "boiler", "furnace",
+    "carbon monoxide", "co detector"
   ]);
 }
 
@@ -9500,7 +9504,83 @@ wss.on("connection", (ws, request) => {
 
 
 
-if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
+if (process.env.BLUE_CALLER_TEST_GENERIC_EMERGENCY_WIPE === "1") {
+  const casesPath = path.join(__dirname, "generic_emergency_wipe_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load generic_emergency_wipe_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  function makeTestWs(sessionKey) {
+    return {
+      readyState: 1,
+      sessionKey,
+      send() {}
+    };
+  }
+
+  Promise.resolve().then(async () => {
+    let passed = 0;
+    const failures = [];
+
+    for (let i = 0; i < cases.length; i++) {
+      const tc = cases[i];
+      const name = tc.name || `case_${i + 1}`;
+      const caseFailures = [];
+      const kind = tc.kind || "matcher";
+
+      if (kind === "ask_issue" || kind === "ask_issue_again") {
+        const sessionKey = `generic-emergency-wipe-${i + 1}`;
+        const ws = makeTestWs(sessionKey);
+        const caller = getOrCreateCaller(sessionKey);
+        caller.lastStep = kind;
+        caller.issue = "";
+        caller.issueSummary = "";
+        await handlePrompt(ws, caller, tc.text || "");
+        if (tc.expect_issue_includes) {
+          const issueText = String(caller.issue || "").toLowerCase();
+          if (!issueText.includes(String(tc.expect_issue_includes).toLowerCase())) {
+            caseFailures.push(`expected issue to include ${JSON.stringify(tc.expect_issue_includes)} but got ${JSON.stringify(caller.issue)}`);
+          }
+        }
+        if (tc.expect_issue_empty) {
+          if (String(caller.issue || "").trim()) {
+            caseFailures.push(`expected issue to stay empty but got ${JSON.stringify(caller.issue)}`);
+          }
+        }
+        if (tc.expect_last_step && caller.lastStep !== tc.expect_last_step) {
+          caseFailures.push(`expected lastStep=${tc.expect_last_step} but got ${caller.lastStep}`);
+        }
+        if (tc.expect_last_step_not && caller.lastStep === tc.expect_last_step_not) {
+          caseFailures.push(`expected lastStep not to be ${tc.expect_last_step_not}`);
+        }
+      } else {
+        const got = isGenericEmergencyIssue(tc.text);
+        if (got !== Boolean(tc.expect_generic_emergency)) {
+          caseFailures.push(`expected isGenericEmergencyIssue=${Boolean(tc.expect_generic_emergency)} but got ${got}`);
+        }
+      }
+
+      if (caseFailures.length) {
+        failures.push(`${name}: ${caseFailures.join("; ")}`);
+        console.log(`FAIL  ${name}`);
+        for (const f of caseFailures) console.log(`  - ${f}`);
+      } else {
+        passed += 1;
+        console.log(`PASS  ${name}`);
+      }
+    }
+
+    console.log(`\nPassed ${passed} of ${cases.length} generic-emergency-wipe cases.`);
+    process.exit(failures.length ? 1 : 0);
+  }).catch((err) => {
+    console.error("generic-emergency-wipe tests failed:", err);
+    process.exit(1);
+  });
+} else if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   const casesPath = path.join(__dirname, "wrap_up_cases.json");
   let cases;
   try {
@@ -9525,8 +9605,8 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
 
   console.log(`\nPassed ${passed} of ${cases.length} wrap-up cases.`);
   process.exit(passed === cases.length ? 0 : 1);
+} else {
+  server.listen(PORT, BIND_HOST, () => {
+    console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
+  });
 }
-
-server.listen(PORT, BIND_HOST, () => {
-  console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
-});
