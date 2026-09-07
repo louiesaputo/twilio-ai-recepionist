@@ -1,0 +1,77 @@
+[
+  {
+    "name": "its_an_emergency_no_hot_water",
+    "kind": "matcher",
+    "text": "It's an emergency, we have no hot water",
+    "expect_generic_emergency": false
+  },
+  {
+    "name": "no_hot_water_this_is_an_emergency",
+    "kind": "matcher",
+    "text": "We have no hot water, this is an emergency",
+    "expect_generic_emergency": false
+  },
+  {
+    "name": "emergency_no_hot_water_no_comma",
+    "kind": "matcher",
+    "text": "This is an emergency we have no hot water",
+    "expect_generic_emergency": false
+  },
+  {
+    "name": "no_heat_emergency",
+    "kind": "matcher",
+    "text": "This is an emergency, there's no heat",
+    "expect_generic_emergency": false
+  },
+  {
+    "name": "boiler_down_emergency",
+    "kind": "matcher",
+    "text": "Our boiler is down, this is an emergency",
+    "expect_generic_emergency": false
+  },
+  {
+    "name": "furnace_not_working_urgent",
+    "kind": "matcher",
+    "text": "This is urgent, the furnace isn't working",
+    "expect_generic_emergency": false
+  },
+  {
+    "name": "carbon_monoxide_emergency",
+    "kind": "matcher",
+    "text": "This is an emergency, carbon monoxide detector going off",
+    "expect_generic_emergency": false
+  },
+  {
+    "name": "bare_emergency_still_generic",
+    "kind": "matcher",
+    "text": "This is an emergency",
+    "expect_generic_emergency": true
+  },
+  {
+    "name": "bare_urgent_still_generic",
+    "kind": "matcher",
+    "text": "This is urgent",
+    "expect_generic_emergency": true
+  },
+  {
+    "name": "ask_issue_again_no_hot_water_is_kept",
+    "kind": "ask_issue_again",
+    "text": "It's an emergency, we have no hot water",
+    "expect_issue_includes": "hot water",
+    "expect_last_step_not": "ask_issue_again"
+  },
+  {
+    "name": "ask_issue_again_boiler_is_kept",
+    "kind": "ask_issue_again",
+    "text": "Our boiler is down, this is an emergency",
+    "expect_issue_includes": "boiler",
+    "expect_last_step_not": "ask_issue_again"
+  },
+  {
+    "name": "ask_issue_again_bare_emergency_still_reasks",
+    "kind": "ask_issue_again",
+    "text": "This is an emergency",
+    "expect_issue_empty": true,
+    "expect_last_step": "ask_issue_again"
+  }
+]
