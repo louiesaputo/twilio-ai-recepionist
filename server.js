@@ -4653,8 +4653,32 @@ function buildAlternateAvailabilityOffer(caller, requestedText, availability, pr
 
 
 
+function isExplicitMunicipalMainPhrase(text) {
+  const t = normalizedText(text);
+  return containsAny(t, [
+    "water main", "main line", "main leak", "main broke", "main broken", "main popped",
+    "main in my yard", "main in the yard"
+  ]);
+}
+
+/** Indoor fixture/appliance supply lines ("fridge water line") are not municipal mains. */
+function isNamedFixtureOrApplianceSupplyContext(text) {
+  const t = normalizedText(text);
+  return containsAny(t, [
+    "refrigerator", "fridge", "freezer", "ice maker", "icemaker", "ice machine",
+    "dishwasher", "washing machine", "washer",
+    "toilet", "sink", "faucet", "facet", "faucit", "fawcett",
+    "water heater", "disposal", "humidifier"
+  ]);
+}
+
 function isMainLineEmergencyCandidate(text) {
   const t = normalizedText(text);
+  // "The water line to my refrigerator is leaking" used to match generic "water line"
+  // and auto-escalate as a broken main. Keep true street-main phrasing.
+  if (isNamedFixtureOrApplianceSupplyContext(t) && !isExplicitMunicipalMainPhrase(t)) {
+    return false;
+  }
   const yardLike = containsAny(t, ["yard", "front yard", "back yard", "outside", "front lawn", "back lawn"]);
   const mainLike = containsAny(t, [
     "water main", "main line", "main leak", "main broke", "main broken", "main popped",
@@ -9499,6 +9523,60 @@ wss.on("connection", (ws, request) => {
 
 
 
+
+if (process.env.BLUE_CALLER_TEST_FIXTURE_WATER_LINE === "1") {
+  const casesPath = path.join(__dirname, "fixture_water_line_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load fixture_water_line_cases.json:", err.message);
+    process.exit(1);
+  }
+
+  let passed = 0;
+  const failures = [];
+  for (const tc of cases) {
+    const name = tc.name || "unnamed";
+    const caseFailures = [];
+    const gotHard = isHardEmergency(tc.text);
+    const gotMain = isMainLineEmergencyCandidate(tc.text);
+    const caller = {
+      issue: tc.text,
+      leadType: "service",
+      emergencyAlert: false,
+      urgency: "normal",
+      status: "new_lead",
+      issueSummary: "",
+      issueIsCapabilityQuestion: false
+    };
+    afterIssueCaptured(caller);
+    if (gotHard !== Boolean(tc.expect_hard_emergency)) {
+      caseFailures.push(`expected hardEmergency=${Boolean(tc.expect_hard_emergency)} but got ${gotHard}`);
+    }
+    if (gotMain !== Boolean(tc.expect_main_line)) {
+      caseFailures.push(`expected mainLine=${Boolean(tc.expect_main_line)} but got ${gotMain}`);
+    }
+    if (tc.expect_lead_type && caller.leadType !== tc.expect_lead_type) {
+      caseFailures.push(`expected leadType=${tc.expect_lead_type} but got ${caller.leadType}`);
+    }
+    if (Object.prototype.hasOwnProperty.call(tc, "expect_emergency_alert") &&
+        Boolean(caller.emergencyAlert) !== Boolean(tc.expect_emergency_alert)) {
+      caseFailures.push(`expected emergencyAlert=${tc.expect_emergency_alert} but got ${caller.emergencyAlert}`);
+    }
+    if (caseFailures.length) {
+      failures.push(`${name}: ${caseFailures.join("; ")}`);
+      console.log(`FAIL  ${name}`);
+      for (const msg of caseFailures) console.log(`  - ${msg}`);
+    } else {
+      passed += 1;
+      console.log(`PASS  ${name}`);
+    }
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} fixture water-line cases.`);
+  process.exit(failures.length ? 1 : 0);
+}
 
 if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   const casesPath = path.join(__dirname, "wrap_up_cases.json");
