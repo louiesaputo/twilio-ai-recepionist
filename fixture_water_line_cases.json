@@ -1,0 +1,74 @@
+[
+  {
+    "name": "fridge_water_line_leak_is_service",
+    "text": "The water line to my refrigerator is leaking",
+    "expect_hard_emergency": false,
+    "expect_main_line": false,
+    "expect_lead_type": "service",
+    "expect_emergency_alert": false
+  },
+  {
+    "name": "fridge_short_water_line_leak_is_service",
+    "text": "My fridge water line is leaking",
+    "expect_hard_emergency": false,
+    "expect_main_line": false,
+    "expect_lead_type": "service",
+    "expect_emergency_alert": false
+  },
+  {
+    "name": "ice_maker_water_line_leak_is_service",
+    "text": "The ice maker water line is leaking behind the fridge",
+    "expect_hard_emergency": false,
+    "expect_main_line": false,
+    "expect_lead_type": "service",
+    "expect_emergency_alert": false
+  },
+  {
+    "name": "dishwasher_water_line_leak_is_service",
+    "text": "The dishwasher water line is leaking under the sink",
+    "expect_hard_emergency": false,
+    "expect_main_line": false,
+    "expect_lead_type": "service",
+    "expect_emergency_alert": false
+  },
+  {
+    "name": "toilet_supply_water_line_leak_is_service",
+    "text": "The water line to the toilet is leaking",
+    "expect_hard_emergency": false,
+    "expect_main_line": false,
+    "expect_lead_type": "service",
+    "expect_emergency_alert": false
+  },
+  {
+    "name": "washer_water_line_leak_is_service",
+    "text": "The washing machine water line is leaking",
+    "expect_hard_emergency": false,
+    "expect_main_line": false,
+    "expect_lead_type": "service",
+    "expect_emergency_alert": false
+  },
+  {
+    "name": "yard_water_line_broke_is_emergency",
+    "text": "The water line in the backyard broke",
+    "expect_hard_emergency": true,
+    "expect_main_line": true,
+    "expect_lead_type": "emergency",
+    "expect_emergency_alert": true
+  },
+  {
+    "name": "water_main_broke_is_emergency",
+    "text": "The water main broke",
+    "expect_hard_emergency": true,
+    "expect_main_line": true,
+    "expect_lead_type": "emergency",
+    "expect_emergency_alert": true
+  },
+  {
+    "name": "water_main_and_sink_still_emergency",
+    "text": "The water main broke and now my sink has no water",
+    "expect_hard_emergency": true,
+    "expect_main_line": true,
+    "expect_lead_type": "emergency",
+    "expect_emergency_alert": true
+  }
+]
