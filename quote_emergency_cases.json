@@ -1,0 +1,65 @@
+[
+  {
+    "name": "replace_gushing_water_heater",
+    "text": "I need my water heater replaced, water is gushing out of it",
+    "expect_lead_type": "emergency",
+    "expect_emergency": true,
+    "expect_summary_substring": ""
+  },
+  {
+    "name": "replace_toilet_sewage_backup",
+    "text": "Can you replace my toilet, sewage is backing up",
+    "expect_lead_type": "emergency",
+    "expect_emergency": true,
+    "expect_summary_substring": "sewer"
+  },
+  {
+    "name": "estimate_for_gas_leak",
+    "text": "I need an estimate, we have a gas leak",
+    "expect_lead_type": "emergency",
+    "expect_emergency": true,
+    "expect_summary_substring": "gas leak"
+  },
+  {
+    "name": "quote_to_fix_burst_pipe",
+    "text": "Can I get a quote to fix a burst pipe",
+    "expect_lead_type": "emergency",
+    "expect_emergency": true,
+    "expect_summary_substring": "burst pipe"
+  },
+  {
+    "name": "remodel_and_basement_flooding",
+    "text": "We're remodeling the basement and now it's flooding",
+    "expect_lead_type": "emergency",
+    "expect_emergency": true,
+    "expect_summary_substring": "flood"
+  },
+  {
+    "name": "keep_new_water_heater_install_quote",
+    "text": "I need a new water heater installed",
+    "expect_lead_type": "quote",
+    "expect_emergency": false,
+    "expect_summary_substring": ""
+  },
+  {
+    "name": "keep_replace_water_heater_quote",
+    "text": "Can you replace my water heater",
+    "expect_lead_type": "quote",
+    "expect_emergency": false,
+    "expect_summary_substring": ""
+  },
+  {
+    "name": "keep_bathroom_remodel_quote",
+    "text": "I'd like a quote for a bathroom remodel",
+    "expect_lead_type": "quote",
+    "expect_emergency": false,
+    "expect_summary_substring": "bathroom"
+  },
+  {
+    "name": "keep_plain_gas_leak_emergency",
+    "text": "There's a gas leak",
+    "expect_lead_type": "emergency",
+    "expect_emergency": true,
+    "expect_summary_substring": "gas leak"
+  }
+]
