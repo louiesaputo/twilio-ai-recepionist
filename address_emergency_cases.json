@@ -1,0 +1,70 @@
+[
+  {
+    "name": "address_confirm_this_is_emergency_burst",
+    "step": "confirm_address",
+    "text": "This is an emergency, the pipe burst",
+    "expect": {
+      "emergencyAlert": true,
+      "leadType": "emergency",
+      "lastStep": "ask_notes",
+      "notes_includes": ["pipe burst"]
+    }
+  },
+  {
+    "name": "address_confirm_yes_thats_right_gushing_ceiling",
+    "step": "confirm_address",
+    "text": "Yes that's right, water is gushing through the ceiling now",
+    "expect": {
+      "emergencyAlert": true,
+      "leadType": "emergency",
+      "lastStep": "ask_notes",
+      "notes_includes": ["gushing"]
+    }
+  },
+  {
+    "name": "address_confirm_yes_gas_leak",
+    "step": "confirm_address",
+    "text": "Yes that's correct, we have a gas leak",
+    "expect": {
+      "emergencyAlert": true,
+      "leadType": "emergency",
+      "lastStep": "ask_notes",
+      "notes_includes": ["gas leak"]
+    }
+  },
+  {
+    "name": "address_confirm_plain_yes_stays_standard",
+    "step": "confirm_address",
+    "text": "Yes that's correct",
+    "expect": {
+      "emergencyAlert": false,
+      "leadType": "service",
+      "lastStep": "schedule_or_callback"
+    }
+  },
+  {
+    "name": "address_confirm_burst_without_yes_still_escalates",
+    "step": "confirm_address",
+    "text": "The pipe burst and water is everywhere",
+    "expect": {
+      "emergencyAlert": true,
+      "leadType": "emergency",
+      "lastStep": "confirm_address",
+      "notes_includes": ["pipe burst"]
+    }
+  },
+  {
+    "name": "phone_confirm_yes_gas_leak_escalates",
+    "step": "confirm_phone",
+    "text": "Yes, we have a gas leak",
+    "caller": {
+      "address": ""
+    },
+    "expect": {
+      "emergencyAlert": true,
+      "leadType": "emergency",
+      "lastStep": "ask_address",
+      "notes_includes": ["gas leak"]
+    }
+  }
+]

@@ -4712,6 +4712,21 @@ function isHardEmergency(text) {
   ]) || isMainLineEmergencyCandidate(t) || isOutsideWaterLossEmergency(t);
 }
 
+/** Caller is explicitly asking to treat the job as an emergency (not a severity-choice "yes"). */
+function isExplicitEmergencyRequest(text) {
+  const t = normalizeIntentText(text);
+  if (!t) return false;
+  if (containsAny(t, [
+    "not an emergency", "not emergency", "non emergency", "nonemergency"
+  ])) return false;
+  return containsAny(t, [
+    "this is an emergency", "it is an emergency", "its an emergency",
+    "mark this as an emergency", "mark it as an emergency",
+    "make this an emergency", "make it an emergency",
+    "emergency help", "need emergency"
+  ]);
+}
+
 
 
 
@@ -6852,7 +6867,28 @@ function sendAddressReadBackOrIncomplete(ws, caller, options = {}) {
   sendText(ws, `Great, let me make sure I have this right. You said ${formatAddressForConfirmation(caller.address)}. Is that correct?`);
 }
 
-function sendAfterAddressConfirmed(ws, caller) {
+/**
+ * Address/phone confirmation can match `isAffirmative` on phrases like
+ * "this is an emergency" and `isAddressConfirmation` on "that's right"
+ * even when the same turn discloses a burst pipe / gas leak. Capture that
+ * before we lock the confirmation and branch to ordinary scheduling.
+ */
+function captureEmergencyDisclosedDuringConfirmation(caller, text) {
+  if (!caller) return false;
+  const raw = cleanForSpeech(text || "");
+  if (!raw) return false;
+  if (!(isHardEmergency(raw) || isExplicitEmergencyRequest(raw))) return false;
+
+  appendAdditionalIssue(caller, raw);
+  if (!cleanForSpeech(caller.issueSummary || "")) {
+    const classified = classifyIssue(caller.issue || raw);
+    caller.issueSummary = (classified && classified.summary) || caller.issue || raw;
+  }
+  markEmergency(caller);
+  return true;
+}
+
+function sendAfterAddressConfirmed(ws, caller, options = {}) {
   if (caller.leadType === "quote") {
     caller.lastStep = "ask_project_timeline";
     sendText(ws, "What is the projected timeline or anticipated start date for this project?");
@@ -6865,15 +6901,20 @@ function sendAfterAddressConfirmed(ws, caller) {
   }
   if (caller.emergencyAlert) {
     caller.lastStep = "ask_notes";
-    sendText(ws, buildTechnicianNotesPrompt(caller));
+    const notesPrompt = buildTechnicianNotesPrompt(caller);
+    if (options.justEscalated) {
+      sendText(ws, `I've marked this as an emergency so the team can review it right away. ${notesPrompt}`);
+      return;
+    }
+    sendText(ws, notesPrompt);
     return;
   }
   caller.lastStep = "schedule_or_callback";
   sendText(ws, buildSchedulingChoicePrompt(caller));
 }
 
-async function finalizeAddressConfirmationAndAdvance(ws, caller) {
-  sendAfterAddressConfirmed(ws, caller);
+async function finalizeAddressConfirmationAndAdvance(ws, caller, options = {}) {
+  sendAfterAddressConfirmed(ws, caller, options);
 }
 
 
@@ -7979,6 +8020,8 @@ async function handlePrompt(ws, caller, speech) {
         return;
       }
 
+      captureEmergencyDisclosedDuringConfirmation(caller, text);
+
       if (isLikelyPhoneNumberResponse(text)) {
         caller.callbackNumber = normalizePhoneForStorage(text);
         confirmAndAdvancePhone(ws, caller);
@@ -8278,6 +8321,7 @@ async function handlePrompt(ws, caller, speech) {
 
 
     case "confirm_address": {
+      const justEscalated = captureEmergencyDisclosedDuringConfirmation(caller, text);
       if (isAffirmative(text) || isAddressConfirmation(text)) {
         if (!callerHasCompleteUsServiceAddress(caller)) {
           const chk = analyzeUsServiceAddressCompleteness(caller.address || "");
@@ -8285,7 +8329,7 @@ async function handlePrompt(ws, caller, speech) {
           sendText(ws, buildIncompleteAddressPrompt(caller, chk.missing));
           return;
         }
-        await finalizeAddressConfirmationAndAdvance(ws, caller);
+        await finalizeAddressConfirmationAndAdvance(ws, caller, { justEscalated });
         return;
       }
       if (isNegative(text)) {
@@ -8315,7 +8359,7 @@ async function handlePrompt(ws, caller, speech) {
               sendText(ws, buildIncompleteAddressPrompt(caller, chk.missing));
               return;
             }
-            await finalizeAddressConfirmationAndAdvance(ws, caller);
+            await finalizeAddressConfirmationAndAdvance(ws, caller, { justEscalated });
             return;
           }
           if (addressDecision.intent === "reject_address") {
@@ -8340,6 +8384,10 @@ async function handlePrompt(ws, caller, speech) {
 
 
 
+      if (justEscalated) {
+        sendText(ws, `I've marked this as an emergency. I just need a yes or no — is ${formatAddressForConfirmation(caller.address)} correct?`);
+        return;
+      }
       sendText(ws, `I just need a yes or no — is ${formatAddressForConfirmation(caller.address)} correct?`);
       return;
     }
@@ -9500,7 +9548,93 @@ wss.on("connection", (ws, request) => {
 
 
 
-if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
+async function runAddressEmergencyPromptCases() {
+  const casesPath = path.join(__dirname, "address_emergency_cases.json");
+  let cases;
+  try {
+    cases = JSON.parse(fs.readFileSync(casesPath, "utf8"));
+  } catch (err) {
+    console.error("Could not load address_emergency_cases.json:", err.message);
+    return 1;
+  }
+
+  const completeAddress = "248 Lake Street, Columbus, OH 43215";
+  let passed = 0;
+  for (let i = 0; i < cases.length; i += 1) {
+    const tc = cases[i];
+    const sessionKey = `address-emergency-case-${i}`;
+    delete callerStore[sessionKey];
+    const caller = getOrCreateCaller(sessionKey);
+    Object.assign(caller, {
+      lastStep: tc.step || "confirm_address",
+      fullName: "Jane Doe",
+      firstName: "Jane",
+      phone: "6145551212",
+      callbackNumber: "6145551212",
+      callbackConfirmed: tc.step === "confirm_phone" ? null : true,
+      address: completeAddress,
+      issue: "leaking kitchen faucet",
+      issueSummary: "a leaking faucet",
+      leadType: "service",
+      urgency: "normal",
+      emergencyAlert: false,
+      status: "new_lead"
+    }, tc.caller || {});
+
+    const ws = {
+      readyState: 1,
+      sessionKey,
+      send() {}
+    };
+
+    try {
+      await handlePrompt(ws, caller, tc.text || "");
+    } catch (err) {
+      console.log(`FAIL  ${tc.name}`);
+      console.log(`  - handlePrompt threw: ${err && err.message}`);
+      continue;
+    }
+
+    const failures = [];
+    const expect = tc.expect || {};
+    if (Object.prototype.hasOwnProperty.call(expect, "emergencyAlert") && caller.emergencyAlert !== expect.emergencyAlert) {
+      failures.push(`emergencyAlert expected ${expect.emergencyAlert} but got ${caller.emergencyAlert}`);
+    }
+    if (expect.leadType && caller.leadType !== expect.leadType) {
+      failures.push(`leadType expected "${expect.leadType}" but got "${caller.leadType}"`);
+    }
+    if (expect.lastStep && caller.lastStep !== expect.lastStep) {
+      failures.push(`lastStep expected "${expect.lastStep}" but got "${caller.lastStep}"`);
+    }
+    const notes = `${caller.notes || ""} ${(caller.additionalIssues || []).join(" ")}`;
+    for (const needle of expect.notes_includes || []) {
+      if (!notes.toLowerCase().includes(String(needle).toLowerCase())) {
+        failures.push(`notes/additionalIssues missing "${needle}" (got ${JSON.stringify(notes)})`);
+      }
+    }
+
+    if (failures.length) {
+      console.log(`FAIL  ${tc.name}`);
+      for (const failure of failures) console.log(`  - ${failure}`);
+    } else {
+      passed += 1;
+      console.log(`PASS  ${tc.name}`);
+    }
+    delete callerStore[sessionKey];
+  }
+
+  console.log(`\nPassed ${passed} of ${cases.length} address-emergency cases.`);
+  return passed === cases.length ? 0 : 1;
+}
+
+if (process.env.BLUE_CALLER_TEST_ADDRESS_EMERGENCY === "1") {
+  runAddressEmergencyPromptCases()
+    .then((code) => process.exit(code))
+    .catch((err) => {
+      console.error("address-emergency regression failed:", err);
+      process.exit(1);
+    });
+} else if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
   const casesPath = path.join(__dirname, "wrap_up_cases.json");
   let cases;
   try {
@@ -9525,8 +9659,8 @@ if (process.env.BLUE_CALLER_TEST_WRAP_UP === "1") {
 
   console.log(`\nPassed ${passed} of ${cases.length} wrap-up cases.`);
   process.exit(passed === cases.length ? 0 : 1);
+} else {
+  server.listen(PORT, BIND_HOST, () => {
+    console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
+  });
 }
-
-server.listen(PORT, BIND_HOST, () => {
-  console.log(`Server listening on ${BIND_HOST}:${PORT} (${APP_VERSION})`);
-});
